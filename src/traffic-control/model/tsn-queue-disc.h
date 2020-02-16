@@ -27,24 +27,45 @@
 
 namespace ns3 {
 
-typedef std::array<bool,8> GateMap; // Maps witch Gates schuld be opend bool
+typedef std::array<bool,8> QostagsMap; // Maps witch Queues schuld be opend on the Qos Tag
 
 typedef struct TsnSchudle{
   ns3::Time duration;
-  GateMap gateMap;
+  QostagsMap qostagsMap;
   ns3::Time startOffset;
   ns3::Time stopOffset;
-  TsnSchudle(ns3::Time duration, GateMap gateMap,  ns3::Time startOffset = ns3::Time(0), ns3::Time stopOffset = ns3::Time(0)){
+  TsnSchudle(ns3::Time duration, QostagsMap qostagsMap,  ns3::Time startOffset = ns3::Time(0), ns3::Time stopOffset = ns3::Time(0)){
     this->duration = duration;
     for(unsigned int i = 0; i < 8; i++){
-      this->gateMap[i] = gateMap[i];
+      this->qostagsMap[i] = qostagsMap[i];
     }
     this->startOffset = startOffset;
     this->stopOffset = stopOffset;
   }
 }TsnSchudle;
 
-typedef std::vector<TsnSchudle> SchudlePlan;
+typedef struct SchudlePlan{
+  std::vector<TsnSchudle> plan;
+  ns3::Time length;
+  SchudlePlan(){
+    this->length = ns3::Time(0);
+      this->plan.clear();
+  }
+  SchudlePlan(std::vector<TsnSchudle> plan){
+    this->length = ns3::Time(0);
+    this->plan.clear();
+    for(unsigned int i = 0; i < plan.size(); i++){
+      this->plan.push_back(plan.at(i));
+      this->length += plan.at(i).duration;
+    }
+  }
+  void addSchudle(TsnSchudle schudle){
+    if(!schudle.duration.IsZero()){
+       this->plan.push_back(schudle);
+       this->length += schudle.duration;
+     }
+  }
+}SchudlePlan;
 
 /**
  * \ingroup traffic-control
@@ -78,12 +99,14 @@ private:
   virtual Ptr<const QueueDiscItem> DoPeek (void);
   virtual bool CheckConfig (void);
   virtual void InitializeParams (void);
+  virtual int GetNextInternelQueueToOpen();
 
-//  void SchudleDoDequeue();
+  virtual ns3::Time TimeUntileQueueOpens(int qostag);
+  virtual void SchudleDequeueEvent(int qostag,ns3::Time timeUntileQueueOpens);
 
-//  ns3::Time GetDequeueOffset(Ptr<QueueDiscItem> item);
-
+  std::array<ns3::Time,8> m_dequeEventList;
   SchudlePlan m_schudlePlan;
+  bool m_trustQostag;
 };
 
 /**
@@ -94,7 +117,7 @@ private:
  *
  * \return std::ostream
  */
-std::ostream &operator << (std::ostream &os, const GateMap &gateMap);
+std::ostream &operator << (std::ostream &os, const QostagsMap &qostagsMap);
 std::ostream &operator << (std::ostream &os, const TsnSchudle &tsnSchudle);
 std::ostream &operator << (std::ostream &os, const SchudlePlan &schudlePlan);
 
@@ -103,7 +126,7 @@ std::ostream &operator << (std::ostream &os, const SchudlePlan &schudlePlan);
  *
  * \return std::istream
  */
-std::istream &operator >> (std::istream &is, GateMap &gateMap);
+std::istream &operator >> (std::istream &is, QostagsMap &qostagsMap);
 std::istream &operator >> (std::istream &is, TsnSchudle &tsnSchudle);
 std::istream &operator >> (std::istream &is, SchudlePlan &schudlePlan);
 

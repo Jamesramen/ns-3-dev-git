@@ -35,7 +35,7 @@ main (int argc, char *argv[])
   CommandLine cmd;
   cmd.Parse (argc, argv);
 
-  Time::SetResolution (Time::NS);
+  Time::SetResolution (Time::MS);
   LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
   LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
@@ -56,10 +56,10 @@ main (int argc, char *argv[])
 
   SchudlePlan schudlePlan;
 
-  schudlePlan.push_back(TsnSchudle(MilliSeconds(1000),GateMap{1,1,1,1,1,1,1,1}));
-  schudlePlan.push_back(TsnSchudle(MilliSeconds(1000),GateMap{0,0,0,0,0,0,0,0}));
-  schudlePlan.push_back(TsnSchudle(MilliSeconds(1000),GateMap{1,1,1,1,1,1,1,1}));
-  schudlePlan.push_back(TsnSchudle(MilliSeconds(1000),GateMap{0,0,0,0,0,0,0,0}));
+  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{1,1,1,1,1,1,1,1}));
+  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{0,0,0,0,0,0,0,0}));
+  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{1,1,1,1,1,1,1,1}));
+  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{0,0,0,0,0,0,0,0}));
 
   tch.SetRootQueueDisc ("ns3::TsnQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan));
 
@@ -78,15 +78,15 @@ main (int argc, char *argv[])
   serverApps.Stop (Seconds (10.0));
 
   UdpEchoClientHelper echoClient (interfaces.GetAddress (1), 9);
-  echoClient.SetAttribute ("MaxPackets", UintegerValue (30));
-  echoClient.SetAttribute ("Interval", TimeValue (Seconds (0.1)));
-  echoClient.SetAttribute ("PacketSize", UintegerValue (1024));
+  echoClient.SetAttribute ("MaxPackets", UintegerValue (99999));
+  echoClient.SetAttribute ("Interval", TimeValue (MilliSeconds(200)));
+  echoClient.SetAttribute ("PacketSize", UintegerValue (64));
 
   ApplicationContainer clientApps = echoClient.Install (nodes.Get (0));
   clientApps.Start (Seconds (0));
-  clientApps.Stop (Seconds (1.0));
+  clientApps.Stop (Seconds (9));
 
-//  pointToPoint.EnablePcapAll ("scratch-simulator");
+  pointToPoint.EnablePcapAll ("scratch-simulator");
 
   Simulator::Run ();
   Simulator::Destroy ();
