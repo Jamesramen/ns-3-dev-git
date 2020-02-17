@@ -52,18 +52,27 @@ main (int argc, char *argv[])
   InternetStackHelper stack;
   stack.Install (nodes);
 
-  TrafficControlHelper tch;
+  TrafficControlHelper tch0,tch1;
 
-  SchudlePlan schudlePlan;
+  SchudlePlan schudlePlan0;
 
-  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{1,1,1,1,1,1,1,1}));
-  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{0,0,0,0,0,0,0,0}));
-  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{1,1,1,1,1,1,1,1}));
-  schudlePlan.addSchudle(TsnSchudle(Seconds(1),QostagsMap{0,0,0,0,0,0,0,0}));
+  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
+  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
+  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
+  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
 
-  tch.SetRootQueueDisc ("ns3::TsnQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan));
+  SchudlePlan schudlePlan1;
 
-  QueueDiscContainer qdiscs = tch.Install (devices);
+  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
+  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
+  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
+  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
+
+  tch0.SetRootQueueDisc ("ns3::TsnQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan0));
+  tch1.SetRootQueueDisc("ns3::TsnQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan1));
+
+  QueueDiscContainer qdiscs0 = tch0.Install (devices.Get(0));
+  QueueDiscContainer qdiscs1 = tch1.Install (devices.Get(1));
 
   Ipv4AddressHelper address;
   address.SetBase ("10.1.1.0", "255.255.255.0");
@@ -80,7 +89,7 @@ main (int argc, char *argv[])
   UdpEchoClientHelper echoClient (interfaces.GetAddress (1), 9);
   echoClient.SetAttribute ("MaxPackets", UintegerValue (99999));
   echoClient.SetAttribute ("Interval", TimeValue (MilliSeconds(200)));
-  echoClient.SetAttribute ("PacketSize", UintegerValue (64));
+  echoClient.SetAttribute ("PacketSize", UintegerValue (1024));
 
   ApplicationContainer clientApps = echoClient.Install (nodes.Get (0));
   clientApps.Start (Seconds (0));

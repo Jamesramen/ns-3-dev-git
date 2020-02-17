@@ -28,6 +28,7 @@
 #include "ns3/simulator.h"
 #include "ns3/tag.h"
 #include "tsn-queue-disc.h"
+#include "ns3/pointer.h"
 
 namespace ns3 {
 
@@ -95,7 +96,7 @@ operator >> (std::istream &is, SchudlePlan &schudlePlan){
 
   unsigned int i = 0;
   schudlePlan.plan.clear();
-  schudlePlan.length = ns3::Time(0);
+  schudlePlan.length = Time(0);
 
   while(is.peek()){
     if(!(is >> schudlePlan.plan.at(i))){
@@ -129,6 +130,12 @@ TypeId TsnQueueDisc::GetTypeId (void)
                     MakeBooleanAccessor(&TsnQueueDisc::m_trustQostag),
                     MakeBooleanChecker()
                    )
+   .AddAttribute ("MaxSize",
+                   "The maximum number of packets accepted by this queue disc",
+                   QueueSizeValue (QueueSize ("800p")),
+                   MakeQueueSizeAccessor (&QueueDisc::SetMaxSize,
+                                          &QueueDisc::GetMaxSize),
+                   MakeQueueSizeChecker ())
   ;
   return tid;
 }
@@ -149,7 +156,7 @@ TsnQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
 {
   NS_LOG_FUNCTION (this << item);
 
-  int32_t ret = Classify (item);
+  int32_t ret = Classify(item);
 
   int32_t childqueue = 0; // 0 Best effort Queue
 
@@ -217,9 +224,9 @@ TsnQueueDisc::GetNextInternelQueueToOpen()
 
   if(this->m_schudlePlan.plan.size())
   {
-      ns3::Time simulationTime = ns3::Simulator::Now();
-      ns3::Time timeIndex( simulationTime.GetInteger() % this->m_schudlePlan.length.GetInteger() );
-      ns3::Time currentTimeOffset(0);
+      Time simulationTime = GetDeviceTime();
+      Time timeIndex( simulationTime.GetInteger() % this->m_schudlePlan.length.GetInteger() );
+      Time currentTimeOffset(0);
 
       for(unsigned int i = 0; i < this->m_schudlePlan.plan.size(); i++)
         {
@@ -257,18 +264,18 @@ TsnQueueDisc::GetNextInternelQueueToOpen()
   return highestQueueToOpen;
 }
 
-ns3::Time
+Time
 TsnQueueDisc::TimeUntileQueueOpens(int qostag)
 {
 
   if(qostag < 0 || qostag > 7){
-    return ns3::Time(-1);
+    return Time(-1);
   }
 
-  ns3::Time simulationTime = ns3::Simulator::Now();
-  ns3::Time timeIndex( simulationTime.GetInteger() % this->m_schudlePlan.length.GetInteger() );
-  ns3::Time currentTimeOffset(0);
-  ns3::Time wrappedOpen(0);
+  Time simulationTime = GetDeviceTime();
+  Time timeIndex( simulationTime.GetInteger() % this->m_schudlePlan.length.GetInteger() );
+  Time currentTimeOffset(0);
+  Time wrappedOpen(0);
 
   for(unsigned int i = 0; i < this->m_schudlePlan.plan.size(); i++)
    {
@@ -295,7 +302,7 @@ TsnQueueDisc::TimeUntileQueueOpens(int qostag)
                  {
                    if(timeIndex >  currentTimeOffset - m_schudlePlan.plan.at(i).duration + m_schudlePlan.plan.at(i).startOffset)
                      {
-                       return ns3::Time(0);
+                       return Time(0);
                      }
                    else // wait until start
                      {
@@ -313,18 +320,15 @@ TsnQueueDisc::TimeUntileQueueOpens(int qostag)
   return wrappedOpen;
 }
 
-void
-TsnQueueDisc::SchudleDequeueEvent(int qostag,ns3::Time timeUntileQueueOpens)
-{
-  if(timeUntileQueueOpens.IsZero()){
-    return;
+Time
+TsnQueueDisc::GetDeviceTime(){
+
+  TimeSourceCallback timeSource = GetTimeSource();
+  if(timeSource){
+    return timeSource();
   }
 
-  if(m_dequeEventList[qostag] != Simulator::Now() + timeUntileQueueOpens){
-    m_dequeEventList[qostag] = Simulator::Now() + timeUntileQueueOpens;
-
-
-  }
+  return Simulator::Now();
 }
 
 Ptr<QueueDiscItem>
@@ -336,7 +340,7 @@ TsnQueueDisc::DoDequeue (void)
   int nextQueue = this->GetNextInternelQueueToOpen();
 
   if(nextQueue > -1){
-    ns3::Time timeUntileQueueOpens = TimeUntileQueueOpens(nextQueue);
+    Time timeUntileQueueOpens = TimeUntileQueueOpens(nextQueue);
 
     if(timeUntileQueueOpens.IsZero())
       {
@@ -344,7 +348,7 @@ TsnQueueDisc::DoDequeue (void)
       }
     else
       {
-        ns3::Simulator::Schedule(timeUntileQueueOpens,&TsnQueueDisc::Run,this);
+        Simulator::Schedule(timeUntileQueueOpens,&TsnQueueDisc::Run,this);
       }
   }
   return 0;
@@ -365,6 +369,18 @@ TsnQueueDisc::DoPeek (void)
   }
 }
 
+void
+TsnQueueDisc::SetTimeSource(TimeSourceCallback func){
+  if(func != 0){
+    m_timeSourceCallback = func;
+  }
+}
+
+TimeSourceCallback
+TsnQueueDisc::GetTimeSource(){
+  return m_timeSourceCallback;
+}
+
 bool
 TsnQueueDisc::CheckConfig (void)
 {
@@ -377,13 +393,13 @@ TsnQueueDisc::CheckConfig (void)
 
   if (GetNInternalQueues () == 0)
       {
-    for(int i = 0; i < 8; i++)
-        {
-          QueueSize maxSize("100p");
 
-          AddInternalQueue (CreateObjectWithAttributes<DropTailQueue<QueueDiscItem> >
-                          ("MaxSize", QueueSizeValue (maxSize)));
-        }
+        QueueSize maxSize(GetMaxSize().GetUnit(),GetMaxSize().GetValue()/8);
+        for(int i = 0; i < 8; i++)
+            {
+              AddInternalQueue (CreateObjectWithAttributes<DropTailQueue<QueueDiscItem> >
+                              ("MaxSize", QueueSizeValue (maxSize)));
+            }
       }
   if (GetNInternalQueues () != 8)
     {

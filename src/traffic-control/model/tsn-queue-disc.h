@@ -30,11 +30,11 @@ namespace ns3 {
 typedef std::array<bool,8> QostagsMap; // Maps witch Queues schuld be opend on the Qos Tag
 
 typedef struct TsnSchudle{
-  ns3::Time duration;
+  Time duration;
   QostagsMap qostagsMap;
-  ns3::Time startOffset;
-  ns3::Time stopOffset;
-  TsnSchudle(ns3::Time duration, QostagsMap qostagsMap,  ns3::Time startOffset = ns3::Time(0), ns3::Time stopOffset = ns3::Time(0)){
+  Time startOffset;
+  Time stopOffset;
+  TsnSchudle(Time duration, QostagsMap qostagsMap,  Time startOffset = Time(0), Time stopOffset = Time(0)){
     this->duration = duration;
     for(unsigned int i = 0; i < 8; i++){
       this->qostagsMap[i] = qostagsMap[i];
@@ -46,13 +46,13 @@ typedef struct TsnSchudle{
 
 typedef struct SchudlePlan{
   std::vector<TsnSchudle> plan;
-  ns3::Time length;
+  Time length;
   SchudlePlan(){
-    this->length = ns3::Time(0);
+    this->length = Time(0);
       this->plan.clear();
   }
   SchudlePlan(std::vector<TsnSchudle> plan){
-    this->length = ns3::Time(0);
+    this->length = Time(0);
     this->plan.clear();
     for(unsigned int i = 0; i < plan.size(); i++){
       this->plan.push_back(plan.at(i));
@@ -66,6 +66,8 @@ typedef struct SchudlePlan{
      }
   }
 }SchudlePlan;
+
+typedef std::function<Time(void)> TimeSourceCallback;
 
 /**
  * \ingroup traffic-control
@@ -94,19 +96,27 @@ public:
   static constexpr const char* LIMIT_EXCEEDED_DROP = "Queue disc limit exceeded";  //!< Packet dropped due to queue disc limit exceeded
 
 private:
-  virtual bool DoEnqueue (Ptr<QueueDiscItem> item);
-  virtual Ptr<QueueDiscItem> DoDequeue (void);
-  virtual Ptr<const QueueDiscItem> DoPeek (void);
-  virtual bool CheckConfig (void);
+
   virtual void InitializeParams (void);
+  virtual void SetTimeSource(TimeSourceCallback func); //TODO
+
+  virtual bool CheckConfig (void);
+  virtual bool DoEnqueue (Ptr<QueueDiscItem> item);
+
   virtual int GetNextInternelQueueToOpen();
 
-  virtual ns3::Time TimeUntileQueueOpens(int qostag);
-  virtual void SchudleDequeueEvent(int qostag,ns3::Time timeUntileQueueOpens);
+  virtual Ptr<QueueDiscItem> DoDequeue (void);
+  virtual Ptr<const QueueDiscItem> DoPeek (void);
 
-  std::array<ns3::Time,8> m_dequeEventList;
+  virtual Time GetDeviceTime();//TODO
+  virtual Time TimeUntileQueueOpens(int qostag);//TODO callc packed transmissionTime
+
+  virtual TimeSourceCallback GetTimeSource();
+
+  std::array<Time,8> m_dequeEventList;
   SchudlePlan m_schudlePlan;
   bool m_trustQostag;
+  TimeSourceCallback m_timeSourceCallback;
 };
 
 /**
@@ -131,7 +141,7 @@ std::istream &operator >> (std::istream &is, TsnSchudle &tsnSchudle);
 std::istream &operator >> (std::istream &is, SchudlePlan &schudlePlan);
 
 ATTRIBUTE_HELPER_HEADER (SchudlePlan);
-
+ATTRIBUTE_HELPER_HEADER (TimeSourceCallback);
 };// namespace ns3
 
 #endif /* SRC_TRAFFIC_CONTROL_MODEL_TSN_QUEUE_DISC_H_ */
