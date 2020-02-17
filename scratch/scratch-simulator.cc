@@ -52,7 +52,7 @@ main (int argc, char *argv[])
   InternetStackHelper stack;
   stack.Install (nodes);
 
-  TrafficControlHelper tch0,tch1;
+  TimeSensitiveNetworkHelper tch0,tch1;
 
   SchudlePlan schudlePlan0;
 

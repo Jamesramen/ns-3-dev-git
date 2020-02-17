@@ -18,16 +18,19 @@
  * Author: Luca Wendling <lwendlin@rhrk.uni-kl.de>
  */
 
-#include "TsnDeviceHelper.h"
+#ifndef SRC_TRAFFIC_CONTROL_HELPER_TIME_SENSETIVE_NETWORK_HELPER_H_
+#define SRC_TRAFFIC_CONTROL_HELPER_TIME_SENSETIVE_NETWORK_HELPER_H_
 
-TsnDeviceHelper::TsnDeviceHelper()
+#include "ns3/traffic-control-helper.h"
+
+namespace ns3 {
+
+class TimeSensitiveNetworkHelper: public TrafficControlHelper
 {
-  // TODO Auto-generated constructor stub
+public:
+  TimeSensitiveNetworkHelper();
+  virtual ~TimeSensitiveNetworkHelper();
+};
 
 }
-
-TsnDeviceHelper::~TsnDeviceHelper()
-{
-  // TODO Auto-generated destructor stub
-}
-
+#endif /* SRC_TRAFFIC_CONTROL_HELPER_TIME_SENSETIVE_NETWORK_HELPER_H_ */

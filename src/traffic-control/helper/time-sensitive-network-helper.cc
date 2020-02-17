@@ -18,14 +18,20 @@
  * Author: Luca Wendling <lwendlin@rhrk.uni-kl.de>
  */
 
-#ifndef SRC_TRAFFIC_CONTROL_HELPER_TSNDEVICEHELPER_H_
-#define SRC_TRAFFIC_CONTROL_HELPER_TSNDEVICEHELPER_H_
+#include "ns3/log.h"
+#include "time-sensitive-network-helper.h"
 
-class TsnDeviceHelper: public ns3::TrafficControlLayer
-{
-public:
-  TsnDeviceHelper();
-  virtual ~TsnDeviceHelper();
-};
+namespace ns3 {
+  NS_LOG_COMPONENT_DEFINE ("TimeSensitiveNetworkHelper");
 
-#endif /* SRC_TRAFFIC_CONTROL_HELPER_TSNDEVICEHELPER_H_ */
+  TimeSensitiveNetworkHelper::TimeSensitiveNetworkHelper()
+  {
+  }
+
+  TimeSensitiveNetworkHelper::~TimeSensitiveNetworkHelper()
+  {
+  }
+
+}
+
+
