@@ -369,6 +369,9 @@ TrafficControlHelper::Install (Ptr<NetDevice> d)
 {
   QueueDiscContainer container;
 
+  d->GetNode()->GetLocalTime();
+  d->GetMtu();
+
   // A TrafficControlLayer object is aggregated by the InternetStackHelper, but check
   // anyway because a queue disc has no effect without a TrafficControlLayer object
   Ptr<TrafficControlLayer> tc = d->GetNode ()->GetObject<TrafficControlLayer> ();

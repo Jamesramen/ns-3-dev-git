@@ -27,14 +27,13 @@
 #include "ns3/drop-tail-queue.h"
 #include "ns3/simulator.h"
 #include "ns3/tag.h"
-#include "tsn-queue-disc.h"
 #include "ns3/pointer.h"
-
+#include "tas-queue-disc.h"
 namespace ns3 {
 
-NS_LOG_COMPONENT_DEFINE ("TsnQueueDisc");
+NS_LOG_COMPONENT_DEFINE ("TasQueueDisc");
 
-NS_OBJECT_ENSURE_REGISTERED (TsnQueueDisc);
+NS_OBJECT_ENSURE_REGISTERED (TasQueueDisc);
 
 ATTRIBUTE_HELPER_CPP (SchudlePlan);
 
@@ -52,11 +51,11 @@ operator << (std::ostream &os, const QostagsMap &qostagsMap){
   return os;
 }
 std::ostream &
-operator << (std::ostream &os, const TsnSchudle &tsnSchudle){
-  os << tsnSchudle.duration;
-  os << tsnSchudle.qostagsMap;
-  os << tsnSchudle.startOffset;
-  os << tsnSchudle.stopOffset;
+operator << (std::ostream &os, const TasSchudle &tasSchudle){
+  os << tasSchudle.duration;
+  os << tasSchudle.qostagsMap;
+  os << tasSchudle.startOffset;
+  os << tasSchudle.stopOffset;
   return os;
 }
 std::ostream &
@@ -84,11 +83,11 @@ operator >> (std::istream &is, QostagsMap &qostagsMap){
   return is;
 }
 std::istream &
-operator >> (std::istream &is, TsnSchudle &tsnSchudle){
-  is >> tsnSchudle.duration;
-  is >> tsnSchudle.qostagsMap;
-  is >> tsnSchudle.startOffset;
-  is >> tsnSchudle.stopOffset;
+operator >> (std::istream &is, TasSchudle &tasSchudle){
+  is >> tasSchudle.duration;
+  is >> tasSchudle.qostagsMap;
+  is >> tasSchudle.startOffset;
+  is >> tasSchudle.stopOffset;
   return is;
 }
 std::istream &
@@ -112,22 +111,22 @@ operator >> (std::istream &is, SchudlePlan &schudlePlan){
   return is;
 }
 
-TypeId TsnQueueDisc::GetTypeId (void)
+TypeId TasQueueDisc::GetTypeId (void)
 {
-  static TypeId tid = TypeId ("ns3::TsnQueueDisc")
+  static TypeId tid = TypeId ("ns3::TasQueueDisc")
     .SetParent<QueueDisc> ()
     .SetGroupName ("TrafficControl")
-    .AddConstructor<TsnQueueDisc> ()
+    .AddConstructor<TasQueueDisc> ()
     .AddAttribute ("SchudlePlan",
                    "The SchudlePlan for the Time Aware Shaper",
                    SchudlePlanValue(),
-                   MakeSchudlePlanAccessor(&TsnQueueDisc::m_schudlePlan),
+                   MakeSchudlePlanAccessor(&TasQueueDisc::m_schudlePlan),
                    MakeSchudlePlanChecker()
                   )
     .AddAttribute ("TrustQostag",
                     "Defines if the Quality of Service should be trusted",
                     BooleanValue(false),
-                    MakeBooleanAccessor(&TsnQueueDisc::m_trustQostag),
+                    MakeBooleanAccessor(&TasQueueDisc::m_trustQostag),
                     MakeBooleanChecker()
                    )
    .AddAttribute ("MaxSize",
@@ -140,19 +139,19 @@ TypeId TsnQueueDisc::GetTypeId (void)
   return tid;
 }
 
-TsnQueueDisc::TsnQueueDisc ()
+TasQueueDisc::TasQueueDisc ()
   : QueueDisc (QueueDiscSizePolicy::MULTIPLE_QUEUES)
 {
   NS_LOG_FUNCTION (this);
 }
 
-TsnQueueDisc::~TsnQueueDisc ()
+TasQueueDisc::~TasQueueDisc ()
 {
   NS_LOG_FUNCTION (this);
 }
 
 bool
-TsnQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
+TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
 {
   NS_LOG_FUNCTION (this << item);
 
@@ -200,7 +199,7 @@ TsnQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
 }
 
 int
-TsnQueueDisc::GetNextInternelQueueToOpen()
+TasQueueDisc::GetNextInternelQueueToOpen()
 {
   int internelQueue = -1;
   QostagsMap queuesToOpen({0,0,0,0,0,0,0,0});
@@ -265,7 +264,7 @@ TsnQueueDisc::GetNextInternelQueueToOpen()
 }
 
 Time
-TsnQueueDisc::TimeUntileQueueOpens(int qostag)
+TasQueueDisc::TimeUntileQueueOpens(int qostag)
 {
 
   if(qostag < 0 || qostag > 7){
@@ -321,7 +320,7 @@ TsnQueueDisc::TimeUntileQueueOpens(int qostag)
 }
 
 Time
-TsnQueueDisc::GetDeviceTime(){
+TasQueueDisc::GetDeviceTime(){
 
   TimeSourceCallback timeSource = GetTimeSource();
   if(timeSource){
@@ -332,7 +331,7 @@ TsnQueueDisc::GetDeviceTime(){
 }
 
 Ptr<QueueDiscItem>
-TsnQueueDisc::DoDequeue (void)
+TasQueueDisc::DoDequeue (void)
 {
 
   NS_LOG_FUNCTION (this);
@@ -348,14 +347,14 @@ TsnQueueDisc::DoDequeue (void)
       }
     else
       {
-        Simulator::Schedule(timeUntileQueueOpens,&TsnQueueDisc::Run,this);
+        Simulator::Schedule(timeUntileQueueOpens,&TasQueueDisc::Run,this);
       }
   }
   return 0;
 }
 
 Ptr<const QueueDiscItem>
-TsnQueueDisc::DoPeek (void)
+TasQueueDisc::DoPeek (void)
 {
   NS_LOG_FUNCTION (this);
 
@@ -370,24 +369,24 @@ TsnQueueDisc::DoPeek (void)
 }
 
 void
-TsnQueueDisc::SetTimeSource(TimeSourceCallback func){
+TasQueueDisc::SetTimeSource(TimeSourceCallback func){
   if(func != 0){
     m_timeSourceCallback = func;
   }
 }
 
 TimeSourceCallback
-TsnQueueDisc::GetTimeSource(){
+TasQueueDisc::GetTimeSource(){
   return m_timeSourceCallback;
 }
 
 bool
-TsnQueueDisc::CheckConfig (void)
+TasQueueDisc::CheckConfig (void)
 {
   NS_LOG_FUNCTION (this);
   if (GetNQueueDiscClasses () > 0)
     {
-      NS_LOG_ERROR ("TsnQueueDisc cannot have classes");
+      NS_LOG_ERROR ("TasQueueDisc cannot have classes");
       return false;
     }
 
@@ -411,7 +410,7 @@ TsnQueueDisc::CheckConfig (void)
 }
 
 void
-TsnQueueDisc::InitializeParams (void)
+TasQueueDisc::InitializeParams (void)
 {
   NS_LOG_FUNCTION (this);
 }

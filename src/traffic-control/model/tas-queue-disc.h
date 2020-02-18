@@ -18,8 +18,8 @@
  * Author: Luca Wenlding <lwendlin@rhrk.uni-kl.de>
  */
 
-#ifndef SRC_TRAFFIC_CONTROL_MODEL_TSN_QUEUE_DISC_H_
-#define SRC_TRAFFIC_CONTROL_MODEL_TSN_QUEUE_DISC_H_
+#ifndef SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_
+#define SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_
 
 #include "ns3/queue-disc.h"
 #include <array>
@@ -29,12 +29,12 @@ namespace ns3 {
 
 typedef std::array<bool,8> QostagsMap; // Maps witch Queues schuld be opend on the Qos Tag
 
-typedef struct TsnSchudle{
+typedef struct TasSchudle{
   Time duration;
   QostagsMap qostagsMap;
   Time startOffset;
   Time stopOffset;
-  TsnSchudle(Time duration, QostagsMap qostagsMap,  Time startOffset = Time(0), Time stopOffset = Time(0)){
+  TasSchudle(Time duration, QostagsMap qostagsMap,  Time startOffset = Time(0), Time stopOffset = Time(0)){
     this->duration = duration;
     for(unsigned int i = 0; i < 8; i++){
       this->qostagsMap[i] = qostagsMap[i];
@@ -42,16 +42,16 @@ typedef struct TsnSchudle{
     this->startOffset = startOffset;
     this->stopOffset = stopOffset;
   }
-}TsnSchudle;
+}TasSchudle;
 
 typedef struct SchudlePlan{
-  std::vector<TsnSchudle> plan;
+  std::vector<TasSchudle> plan;
   Time length;
   SchudlePlan(){
     this->length = Time(0);
       this->plan.clear();
   }
-  SchudlePlan(std::vector<TsnSchudle> plan){
+  SchudlePlan(std::vector<TasSchudle> plan){
     this->length = Time(0);
     this->plan.clear();
     for(unsigned int i = 0; i < plan.size(); i++){
@@ -59,7 +59,7 @@ typedef struct SchudlePlan{
       this->length += plan.at(i).duration;
     }
   }
-  void addSchudle(TsnSchudle schudle){
+  void addSchudle(TasSchudle schudle){
     if(!schudle.duration.IsZero()){
        this->plan.push_back(schudle);
        this->length += schudle.duration;
@@ -76,7 +76,7 @@ typedef std::function<Time(void)> TimeSourceCallback;
  *
  */
 
-class TsnQueueDisc : public QueueDisc {
+class TasQueueDisc : public QueueDisc {
 public:
   /**
    * \brief Get the type ID.
@@ -84,13 +84,13 @@ public:
    */
   static TypeId GetTypeId (void);
   /**
-   * \brief TsnQueueDisc constructor
+   * \brief TasQueueDisc constructor
    *
    * Creates a queue with a depth of 1000 packets by default
    */
-  TsnQueueDisc ();
+  TasQueueDisc ();
 
-  virtual ~TsnQueueDisc();
+  virtual ~TasQueueDisc();
 
   // Reasons for dropping packets
   static constexpr const char* LIMIT_EXCEEDED_DROP = "Queue disc limit exceeded";  //!< Packet dropped due to queue disc limit exceeded
@@ -128,7 +128,7 @@ private:
  * \return std::ostream
  */
 std::ostream &operator << (std::ostream &os, const QostagsMap &qostagsMap);
-std::ostream &operator << (std::ostream &os, const TsnSchudle &tsnSchudle);
+std::ostream &operator << (std::ostream &os, const TasSchudle &tasSchudle);
 std::ostream &operator << (std::ostream &os, const SchudlePlan &schudlePlan);
 
 /**
@@ -137,11 +137,11 @@ std::ostream &operator << (std::ostream &os, const SchudlePlan &schudlePlan);
  * \return std::istream
  */
 std::istream &operator >> (std::istream &is, QostagsMap &qostagsMap);
-std::istream &operator >> (std::istream &is, TsnSchudle &tsnSchudle);
+std::istream &operator >> (std::istream &is, TasSchudle &tasSchudle);
 std::istream &operator >> (std::istream &is, SchudlePlan &schudlePlan);
 
 ATTRIBUTE_HELPER_HEADER (SchudlePlan);
 ATTRIBUTE_HELPER_HEADER (TimeSourceCallback);
 };// namespace ns3
 
-#endif /* SRC_TRAFFIC_CONTROL_MODEL_TSN_QUEUE_DISC_H_ */
+#endif /* SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_ */
