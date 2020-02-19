@@ -20,6 +20,7 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/traffic-control-module.h"
+#include "ns3/tsn-module.h"
 
 #include "stdio.h"
 #include <array>
@@ -28,6 +29,10 @@
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("ScratchSimulator");
+
+Time callbackfunc();
+
+int32_t ipv4PacketFilter(Ptr<QueueDiscItem> item);
 
 int
 main (int argc, char *argv[])
@@ -52,24 +57,33 @@ main (int argc, char *argv[])
   InternetStackHelper stack;
   stack.Install (nodes);
 
-  TimeSensitiveNetworkHelper tch0,tch1;
+  TsnHelper tch0,tch1;
 
   SchudlePlan schudlePlan0;
 
-  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
-  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
-  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
-  schudlePlan0.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
+  schudlePlan0.addSchudle(Seconds(1),{1,1,1,1,0,1,1,1});
+  schudlePlan0.addSchudle(Seconds(1),{0,0,0,0,1,0,0,0});
+  schudlePlan0.addSchudle(Seconds(1),{1,1,1,1,1,1,1,1});
+  schudlePlan0.addSchudle(Seconds(1),{0,0,0,0,0,0,0,0});
 
   SchudlePlan schudlePlan1;
 
-  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
-  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
-  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{0,0,0,0,0,0,0,0}));
-  schudlePlan1.addSchudle(TsnSchudle(Seconds(1),{1,1,1,1,1,1,1,1}));
+  schudlePlan1.addSchudle(Seconds(1),{0,0,0,0,0,0,0,0});
+  schudlePlan1.addSchudle(Seconds(1),{1,1,1,1,1,1,1,1});
+  schudlePlan1.addSchudle(Seconds(1),{0,0,0,0,0,0,0,0});
+  schudlePlan1.addSchudle(Seconds(1),{1,1,1,1,1,1,1,1});
 
-  tch0.SetRootQueueDisc ("ns3::TsnQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan0));
-  tch1.SetRootQueueDisc("ns3::TsnQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan1));
+
+  tch0.SetRootQueueDisc ("ns3::TasQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan0));
+
+  CallbackValue timeSource = MakeCallback(&callbackfunc);
+
+  tch1.SetRootQueueDisc("ns3::TasQueueDisc",
+      "SchudlePlan", SchudlePlanValue(schudlePlan1),
+      "TimeSource", timeSource
+      );
+
+  tch0.AddPacketFilter(0,"ns3::TsnIpv4PacketFilter","Classify",CallbackValue(MakeCallback(&ipv4PacketFilter)));
 
   QueueDiscContainer qdiscs0 = tch0.Install (devices.Get(0));
   QueueDiscContainer qdiscs1 = tch1.Install (devices.Get(1));
@@ -78,6 +92,7 @@ main (int argc, char *argv[])
   address.SetBase ("10.1.1.0", "255.255.255.0");
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
+
 
   UdpEchoServerHelper echoServer (9);
 
@@ -100,4 +115,12 @@ main (int argc, char *argv[])
   Simulator::Run ();
   Simulator::Destroy ();
   return 0;
+}
+
+int32_t ipv4PacketFilter(Ptr<QueueDiscItem> item){
+  return 4;
+}
+
+Time callbackfunc(){
+  return Simulator::Now();
 }

@@ -22,10 +22,9 @@ def build(bld):
       'model/mq-queue-disc.cc',
       'model/tbf-queue-disc.cc',
       'model/cobalt-queue-disc.cc',
-   	  'model/tsn-queue-disc.cc',
+   	  'model/tas-queue-disc.cc',
       'helper/traffic-control-helper.cc',
       'helper/queue-disc-container.cc',
-      'helper/time-sensitive-network-helper.cc'
         ]
 
     module_test = bld.create_ns3_module_test_library('traffic-control')
@@ -58,10 +57,9 @@ def build(bld):
       'model/mq-queue-disc.h',
       'model/tbf-queue-disc.h',
       'model/cobalt-queue-disc.h',
-	  'model/tsn-queue-disc.h',
+	  'model/tas-queue-disc.h',
       'helper/traffic-control-helper.h',
       'helper/queue-disc-container.h',
-      'helper/time-sensitive-network-helper.h'
         ]
 
     if bld.env.ENABLE_EXAMPLES:

@@ -134,7 +134,14 @@ TypeId TasQueueDisc::GetTypeId (void)
                    QueueSizeValue (QueueSize ("800p")),
                    MakeQueueSizeAccessor (&QueueDisc::SetMaxSize,
                                           &QueueDisc::GetMaxSize),
-                   MakeQueueSizeChecker ())
+                   MakeQueueSizeChecker ()
+                   )
+   .AddAttribute("TimeSource",
+                 "function callback to get Current Time ",
+                 CallbackValue (),
+                 MakeCallbackAccessor(&TasQueueDisc::m_getNow),
+                 MakeCallbackChecker()
+             )
   ;
   return tid;
 }
@@ -322,11 +329,9 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
 Time
 TasQueueDisc::GetDeviceTime(){
 
-  TimeSourceCallback timeSource = GetTimeSource();
-  if(timeSource){
-    return timeSource();
+  if(!m_getNow.IsNull()){
+    return m_getNow();
   }
-
   return Simulator::Now();
 }
 
@@ -366,18 +371,6 @@ TasQueueDisc::DoPeek (void)
     NS_LOG_LOGIC ("Queue empty");
           return 0;
   }
-}
-
-void
-TasQueueDisc::SetTimeSource(TimeSourceCallback func){
-  if(func != 0){
-    m_timeSourceCallback = func;
-  }
-}
-
-TimeSourceCallback
-TasQueueDisc::GetTimeSource(){
-  return m_timeSourceCallback;
 }
 
 bool

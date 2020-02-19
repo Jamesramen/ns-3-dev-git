@@ -65,9 +65,14 @@ typedef struct SchudlePlan{
        this->length += schudle.duration;
      }
   }
+  void addSchudle(Time duration, QostagsMap gatemap, Time startOffset = Time(0), Time stopOffset = Time(0)){
+    TasSchudle schudle(duration,gatemap,startOffset,stopOffset);
+    if(!schudle.duration.IsZero()){
+         this->plan.push_back(schudle);
+         this->length += schudle.duration;
+       }
+    }
 }SchudlePlan;
-
-typedef std::function<Time(void)> TimeSourceCallback;
 
 /**
  * \ingroup traffic-control
@@ -98,7 +103,6 @@ public:
 private:
 
   virtual void InitializeParams (void);
-  virtual void SetTimeSource(TimeSourceCallback func); //TODO
 
   virtual bool CheckConfig (void);
   virtual bool DoEnqueue (Ptr<QueueDiscItem> item);
@@ -111,12 +115,10 @@ private:
   virtual Time GetDeviceTime();//TODO
   virtual Time TimeUntileQueueOpens(int qostag);//TODO callc packed transmissionTime
 
-  virtual TimeSourceCallback GetTimeSource();
-
-  std::array<Time,8> m_dequeEventList;
   SchudlePlan m_schudlePlan;
   bool m_trustQostag;
-  TimeSourceCallback m_timeSourceCallback;
+
+  Callback <Time> m_getNow;
 };
 
 /**
@@ -141,7 +143,6 @@ std::istream &operator >> (std::istream &is, TasSchudle &tasSchudle);
 std::istream &operator >> (std::istream &is, SchudlePlan &schudlePlan);
 
 ATTRIBUTE_HELPER_HEADER (SchudlePlan);
-ATTRIBUTE_HELPER_HEADER (TimeSourceCallback);
 };// namespace ns3
 
 #endif /* SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_ */

@@ -18,20 +18,30 @@
  * Author: Luca Wendling <lwendlin@rhrk.uni-kl.de>
  */
 
-#include "ns3/log.h"
-#include "time-sensitive-network-helper.h"
+#ifndef SRC_TSN_MODEL_TSNIPV4PACKETFILTER_H_
+#define SRC_TSN_MODEL_TSNIPV4PACKETFILTER_H_
 
-namespace ns3 {
-  NS_LOG_COMPONENT_DEFINE ("TimeSensitiveNetworkHelper");
+#include "ns3/ipv4-queue-disc-item.h"
+#include "ns3/queue-disc.h"
+#include "ns3/packet-filter.h"
 
-  TimeSensitiveNetworkHelper::TimeSensitiveNetworkHelper()
-  {
-  }
+namespace ns3
+{
 
-  TimeSensitiveNetworkHelper::~TimeSensitiveNetworkHelper()
-  {
-  }
+class TsnIpv4PacketFilter: public PacketFilter
+{
+public:
+  static TypeId GetTypeId (void);
 
-}
+  TsnIpv4PacketFilter();
+  virtual ~TsnIpv4PacketFilter();
 
+private:
+  virtual bool CheckProtocol (Ptr<QueueDiscItem> item) const;
+  virtual int32_t DoClassify (Ptr<QueueDiscItem> item) const;
+  Callback <int32_t,Ptr<QueueDiscItem>> m_DoClassify;
+};
 
+} /* namespace ns3 */
+
+#endif /* SRC_TSN_MODEL_TSNIPV4PACKETFILTER_H_ */

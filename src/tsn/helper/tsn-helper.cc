@@ -18,19 +18,20 @@
  * Author: Luca Wendling <lwendlin@rhrk.uni-kl.de>
  */
 
-#ifndef SRC_TRAFFIC_CONTROL_HELPER_TIME_SENSETIVE_NETWORK_HELPER_H_
-#define SRC_TRAFFIC_CONTROL_HELPER_TIME_SENSETIVE_NETWORK_HELPER_H_
+#include "ns3/log.h"
+#include "tsn-helper.h"
 
-#include "ns3/traffic-control-helper.h"
-
-namespace ns3 {
-
-class TimeSensitiveNetworkHelper: public TrafficControlHelper
+namespace ns3
 {
-public:
-  TimeSensitiveNetworkHelper();
-  virtual ~TimeSensitiveNetworkHelper();
-};
 
+NS_LOG_COMPONENT_DEFINE ("TsnHelper");
+
+TsnHelper::TsnHelper()
+{
 }
-#endif /* SRC_TRAFFIC_CONTROL_HELPER_TIME_SENSETIVE_NETWORK_HELPER_H_ */
+
+TsnHelper::~TsnHelper()
+{
+}
+
+} /* namespace ns3 */
