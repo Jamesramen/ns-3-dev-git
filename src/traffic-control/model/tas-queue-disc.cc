@@ -29,42 +29,43 @@
 #include "ns3/tag.h"
 #include "ns3/pointer.h"
 #include "tas-queue-disc.h"
+
 namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE ("TasQueueDisc");
 
 NS_OBJECT_ENSURE_REGISTERED (TasQueueDisc);
 
-ATTRIBUTE_HELPER_CPP (SchudlePlan);
+ATTRIBUTE_HELPER_CPP (TasConfig);
 
 std::ostream &
 operator << (std::ostream &os, const QostagsMap &qostagsMap){
 
-  if( (unsigned int) qostagsMap.size() != 8 ){
-    NS_FATAL_ERROR ("Incomplete schudle QostagsMap specification (" << (unsigned int) qostagsMap.size() << " values provided, 8 required)");
+  if( (unsigned int) qostagsMap.size() != TOTAL_QOS_TAGS ){
+    NS_FATAL_ERROR ("Incomplete schedule QostagsMap specification (" << (unsigned int) qostagsMap.size() << " values provided, " << TOTAL_QOS_TAGS << " required)");
   }
 
-  for(int i = 0; i < 8; i++){
+  for(int i = 0; i < TOTAL_QOS_TAGS; i++){
    os << qostagsMap[i] << " ";
   }
 
   return os;
 }
 std::ostream &
-operator << (std::ostream &os, const TasSchudle &tasSchudle){
-  os << tasSchudle.duration;
-  os << tasSchudle.qostagsMap;
-  os << tasSchudle.startOffset;
-  os << tasSchudle.stopOffset;
+operator << (std::ostream &os, const TasSchedule &tasSchedule){
+  os << tasSchedule.duration;
+  os << tasSchedule.qostagsMap;
+  os << tasSchedule.startOffset;
+  os << tasSchedule.stopOffset;
   return os;
 }
 std::ostream &
-operator << (std::ostream &os, const SchudlePlan &schudlePlan)
+operator << (std::ostream &os, const TasConfig &tasConfig)
 {
 
-  if(!schudlePlan.plan.empty()){
-    for(unsigned int i = 0; i < (unsigned int)schudlePlan.plan.size() -1; i++ ){
-      os << schudlePlan.plan.at(i);
+  if(!tasConfig.scheduleList.empty()){
+    for(unsigned int i = 0; i < (unsigned int)tasConfig.scheduleList.size() -1; i++ ){
+      os << tasConfig.scheduleList.at(i);
     }
   }
   os << 0; // End character
@@ -73,39 +74,39 @@ operator << (std::ostream &os, const SchudlePlan &schudlePlan)
 
 std::istream &
 operator >> (std::istream &is, QostagsMap &qostagsMap){
-  for (int i = 0; i < 8; i++)
+  for (int i = 0; i < TOTAL_QOS_TAGS; i++)
    {
      if (!(is >> qostagsMap[i]))
      {
-       NS_FATAL_ERROR ("Incomplete QostagsMap specification (" << i << " values provided, 8 required)");
+       NS_FATAL_ERROR ("Incomplete QostagsMap specification (" << i << " values provided, " << TOTAL_QOS_TAGS << " required)");
      }
    }
   return is;
 }
 std::istream &
-operator >> (std::istream &is, TasSchudle &tasSchudle){
-  is >> tasSchudle.duration;
-  is >> tasSchudle.qostagsMap;
-  is >> tasSchudle.startOffset;
-  is >> tasSchudle.stopOffset;
+operator >> (std::istream &is, TasSchedule &tasSchedule){
+  is >> tasSchedule.duration;
+  is >> tasSchedule.qostagsMap;
+  is >> tasSchedule.startOffset;
+  is >> tasSchedule.stopOffset;
   return is;
 }
 std::istream &
-operator >> (std::istream &is, SchudlePlan &schudlePlan){
+operator >> (std::istream &is, TasConfig &tasConfig){
 
   unsigned int i = 0;
-  schudlePlan.plan.clear();
-  schudlePlan.length = Time(0);
+  tasConfig.scheduleList.clear();
+  tasConfig.cycleLength = Time(0);
 
   while(is.peek()){
-    if(!(is >> schudlePlan.plan.at(i))){
-      NS_FATAL_ERROR ("Unspecified fatal error schudlePlan input stream");
+    if(!(is >> tasConfig.scheduleList.at(i))){
+      NS_FATAL_ERROR ("Unspecified fatal error tasConfig input stream");
     }
-    schudlePlan.length += schudlePlan.plan.at(i).duration;
+    tasConfig.cycleLength += tasConfig.scheduleList.at(i).duration;
   }
 
   if(i == 0){
-    NS_FATAL_ERROR ("Incomplete schudlePlan specification (" << i << "values provided, 1 required");
+    NS_FATAL_ERROR ("Incomplete tasConfig specification (" << i << "values provided, 1 required");
   }
 
   return is;
@@ -117,11 +118,11 @@ TypeId TasQueueDisc::GetTypeId (void)
     .SetParent<QueueDisc> ()
     .SetGroupName ("TrafficControl")
     .AddConstructor<TasQueueDisc> ()
-    .AddAttribute ("SchudlePlan",
-                   "The SchudlePlan for the Time Aware Shaper",
-                   SchudlePlanValue(),
-                   MakeSchudlePlanAccessor(&TasQueueDisc::m_schudlePlan),
-                   MakeSchudlePlanChecker()
+    .AddAttribute ("TasConfig",
+                   "The TasConfig for the Time Aware Shaper",
+                   TasConfigValue(),
+                   MakeTasConfigAccessor(&TasQueueDisc::m_tasConfig),
+                   MakeTasConfigChecker()
                   )
     .AddAttribute ("TrustQostag",
                     "Defines if the Quality of Service should be trusted",
@@ -173,7 +174,7 @@ TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
      SocketPriorityTag qosTag;
      if (item->GetPacket ()->PeekPacketTag (qosTag))
        {
-       childqueue = qosTag.GetPriority () & 0x07; // Max queue is 8
+       childqueue = qosTag.GetPriority () & (TOTAL_QOS_TAGS*2-1); // Max queue is TOTAL_QOS_TAGS
        }
      else
      {
@@ -206,13 +207,14 @@ TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
 }
 
 int
-TasQueueDisc::GetNextInternelQueueToOpen()
+TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
 {
-  int internelQueue = -1;
-  QostagsMap queuesToOpen({0,0,0,0,0,0,0,0});
+  int internelQueue = -1; // Defaut Value represents no Queue to Open
+  QostagsMap queuesToOpen;
+
   int highestQueueToOpen = -1;
 
-  for(unsigned int i = 0; i < 8; i++)
+  for(unsigned int i = 0; i < TOTAL_QOS_TAGS; i++)
     {
       if(!GetInternalQueue (i)->IsEmpty())
         {
@@ -221,6 +223,10 @@ TasQueueDisc::GetNextInternelQueueToOpen()
             highestQueueToOpen = i;
           }
         }
+      else
+      {
+        queuesToOpen[i] = false;
+      }
     }
 
   if(highestQueueToOpen < 0) // No items in queues
@@ -228,99 +234,84 @@ TasQueueDisc::GetNextInternelQueueToOpen()
       return internelQueue;
     }
 
-  if(this->m_schudlePlan.plan.size())
+  if(this->m_tasConfig.scheduleList.size())
   {
       Time simulationTime = GetDeviceTime();
-      Time timeIndex( simulationTime.GetInteger() % this->m_schudlePlan.length.GetInteger() );
-      Time currentTimeOffset(0);
+      Time timeIndex( simulationTime.GetInteger() % this->m_tasConfig.cycleLength.GetInteger() ); // Reletive time in schedule
+      Time timeQueueXCloses(0);
 
-      for(unsigned int i = 0; i < this->m_schudlePlan.plan.size(); i++)
+      for(unsigned int i = 0; i < this->m_tasConfig.scheduleList.size(); i++)
         {
-          currentTimeOffset += this->m_schudlePlan.plan.at(i).duration;
-          bool forwardCheck = false;
-          bool wrapCheck = false;
 
-          if(timeIndex < currentTimeOffset)
+          timeQueueXCloses += this->m_tasConfig.scheduleList.at(i).duration; // Time point when schedule i closes and i+1 opens
+
+          bool forwardCheck = true; // if current schedule will be executed without wrap around
+
+          if(timeIndex < timeQueueXCloses - this->m_tasConfig.scheduleList.at(i).stopOffset)
             {
-              forwardCheck = true;
-            }
-          else if(internelQueue < 0)
-            {
-              wrapCheck = true;
+              if(internelQueue > -1) // Next schedule after wrap around is known
+                {
+                  continue; // Skip to active schedule
+                }
+              forwardCheck = false;// Check for after wrap around
             }
 
-          if(forwardCheck || wrapCheck)
+          for(unsigned int prio = GetNInternalQueues(); prio > 0; prio--)
             {
-            for(unsigned int prio = GetNInternalQueues(); prio > 0; prio--)
-              {
-                if(this->m_schudlePlan.plan.at(i).qostagsMap[prio-1] && queuesToOpen[prio-1])
+              if(this->m_tasConfig.scheduleList.at(i).qostagsMap[prio-1] && queuesToOpen[prio-1])
+               {
+               if(forwardCheck)
                  {
-                 if(forwardCheck)
-                   {
-                     return prio-1;
-                   }
-                   internelQueue = prio-1;
+                   return prio-1;
                  }
-              }
+               else
+                 {
+                   internelQueue = prio-1; // Saves fist Queue to Open in next Total Run of Schedule
+                 }
+               }
             }
         }
       return internelQueue;
   }
-
-  return highestQueueToOpen;
+  return highestQueueToOpen; // No Schedule Plan => Prio sorted
 }
 
 Time
 TasQueueDisc::TimeUntileQueueOpens(int qostag)
 {
 
-  if(qostag < 0 || qostag > 7){
+  if(qostag < 0 || qostag > TOTAL_QOS_TAGS-1){
     return Time(-1);
   }
 
   Time simulationTime = GetDeviceTime();
-  Time timeIndex( simulationTime.GetInteger() % this->m_schudlePlan.length.GetInteger() );
-  Time currentTimeOffset(0);
+  Time timeIndex( simulationTime.GetInteger() % this->m_tasConfig.cycleLength.GetInteger() ); // Relative Time in schedule
+  Time timeQueueXCloses(0);
   Time wrappedOpen(0);
 
-  for(unsigned int i = 0; i < this->m_schudlePlan.plan.size(); i++)
+  for(unsigned int i = 0; i < this->m_tasConfig.scheduleList.size(); i++)
    {
-      currentTimeOffset += this->m_schudlePlan.plan.at(i).duration;
-      bool forwardCheck = false;
-      bool wrapCheck = false;
 
-      if(timeIndex < currentTimeOffset)
-        {
-          forwardCheck = true;
-        }
-      else if(wrappedOpen.IsZero())
-        {
-          wrapCheck = true;
-        }
+    timeQueueXCloses += this->m_tasConfig.scheduleList.at(i).duration;
 
-      if(forwardCheck || wrapCheck)
+       if(m_tasConfig.scheduleList.at(i).qostagsMap[qostag])
         {
-           if(m_schudlePlan.plan.at(i).qostagsMap[qostag])
-            {
-             if(forwardCheck)
-             {
-               if(timeIndex < currentTimeOffset - m_schudlePlan.plan.at(i).stopOffset) // Check boundries
-                 {
-                   if(timeIndex >  currentTimeOffset - m_schudlePlan.plan.at(i).duration + m_schudlePlan.plan.at(i).startOffset)
-                     {
-                       return Time(0);
-                     }
-                   else // wait until start
-                     {
-                       return currentTimeOffset - timeIndex - m_schudlePlan.plan.at(i).duration + m_schudlePlan.plan.at(i).startOffset;
-                     }
-                 } //Queue Closed
-              }
-             else
+         if(timeIndex < timeQueueXCloses - m_tasConfig.scheduleList.at(i).stopOffset) //Get Active Schedule
+           {
+             if(timeIndex >  timeQueueXCloses - m_tasConfig.scheduleList.at(i).duration + m_tasConfig.scheduleList.at(i).startOffset)
                {
-                 wrappedOpen = m_schudlePlan.length - timeIndex + m_schudlePlan.plan.at(i).startOffset + currentTimeOffset - m_schudlePlan.plan.at(i).duration ;
+                 return Time(0); //Queue is Active
                }
-            }
+             else // wait until start
+               {
+                 return timeQueueXCloses - timeIndex - m_tasConfig.scheduleList.at(i).duration + m_tasConfig.scheduleList.at(i).startOffset;
+               }
+           }
+         else if(!wrappedOpen.IsZero()) //Get newest active schedule after wrap around
+           {
+             // wrappedOpen = (Time until end of schudleList) + ( Time until schedule i opens ) + startOffset
+             wrappedOpen = (m_tasConfig.cycleLength - timeIndex) + (timeQueueXCloses - m_tasConfig.scheduleList.at(i).duration) + m_tasConfig.scheduleList.at(i).startOffset ;
+           }
         }
    }
   return wrappedOpen;
@@ -336,26 +327,37 @@ TasQueueDisc::GetDeviceTime(){
 }
 
 Ptr<QueueDiscItem>
-TasQueueDisc::DoDequeue (void)
+TasQueueDisc::DoDequeue (void) // Dequeues Packets and Schedule next Dequeue
 {
 
   NS_LOG_FUNCTION (this);
 
   int nextQueue = this->GetNextInternelQueueToOpen();
 
-  if(nextQueue > -1){
+  if(nextQueue > -1) //There is a Queue to open
+  {
     Time timeUntileQueueOpens = TimeUntileQueueOpens(nextQueue);
 
-    if(timeUntileQueueOpens.IsZero())
+    if(timeUntileQueueOpens.IsZero()) //This queue is active
       {
         return GetInternalQueue(nextQueue)->Dequeue();
       }
     else
       {
-        Simulator::Schedule(timeUntileQueueOpens,&TasQueueDisc::Run,this);
+        SchudleRun(nextQueue);
       }
   }
   return 0;
+}
+
+void
+TasQueueDisc::SchudleRun(uint32_t queue)
+{
+  if(queuesToBeOpend[queue].IsExpired())
+  {
+    Time timeUntileQueueOpens = TimeUntileQueueOpens(queue);
+    queuesToBeOpend[queue] = Simulator::Schedule(timeUntileQueueOpens,&TasQueueDisc::Run, this);
+  }
 }
 
 Ptr<const QueueDiscItem>
@@ -386,16 +388,16 @@ TasQueueDisc::CheckConfig (void)
   if (GetNInternalQueues () == 0)
       {
 
-        QueueSize maxSize(GetMaxSize().GetUnit(),GetMaxSize().GetValue()/8);
-        for(int i = 0; i < 8; i++)
+        QueueSize maxSize(GetMaxSize().GetUnit(),GetMaxSize().GetValue()/TOTAL_QOS_TAGS);
+        for(int i = 0; i < TOTAL_QOS_TAGS; i++)
             {
               AddInternalQueue (CreateObjectWithAttributes<DropTailQueue<QueueDiscItem> >
                               ("MaxSize", QueueSizeValue (maxSize)));
             }
       }
-  if (GetNInternalQueues () != 8)
+  if (GetNInternalQueues () != TOTAL_QOS_TAGS)
     {
-      NS_LOG_ERROR ("PieQueueDisc needs 8 internal queues");
+      NS_LOG_ERROR ("PieQueueDisc needs " << TOTAL_QOS_TAGS << "  internal queues");
       return false;
     }
 

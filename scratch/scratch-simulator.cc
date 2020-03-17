@@ -59,27 +59,27 @@ main (int argc, char *argv[])
 
   TsnHelper tch0,tch1;
 
-  SchudlePlan schudlePlan0;
+  TasConfig schedulePlan0;
 
-  schudlePlan0.addSchudle(Seconds(1),{1,1,1,1,0,1,1,1});
-  schudlePlan0.addSchudle(Seconds(1),{0,0,0,0,1,0,0,0});
-  schudlePlan0.addSchudle(Seconds(1),{1,1,1,1,1,1,1,1});
-  schudlePlan0.addSchudle(Seconds(1),{0,0,0,0,0,0,0,0});
+  schedulePlan0.addSchedule(Seconds(1),{1,1,1,1,0,1,1,1});
+  schedulePlan0.addSchedule(Seconds(1),{0,0,0,0,1,0,0,0});
+  schedulePlan0.addSchedule(Seconds(1),{1,1,1,1,1,1,1,1});
+  schedulePlan0.addSchedule(Seconds(1),{0,0,0,0,0,0,0,0});
 
-  SchudlePlan schudlePlan1;
+  TasConfig schedulePlan1;
 
-  schudlePlan1.addSchudle(Seconds(1),{0,0,0,0,0,0,0,0});
-  schudlePlan1.addSchudle(Seconds(1),{1,1,1,1,1,1,1,1});
-  schudlePlan1.addSchudle(Seconds(1),{0,0,0,0,0,0,0,0});
-  schudlePlan1.addSchudle(Seconds(1),{1,1,1,1,1,1,1,1});
+  schedulePlan1.addSchedule(Seconds(1),{0,0,0,0,0,0,0,0});
+  schedulePlan1.addSchedule(Seconds(1),{1,1,1,1,1,1,1,1});
+  schedulePlan1.addSchedule(Seconds(1),{0,0,0,0,0,0,0,0});
+  schedulePlan1.addSchedule(Seconds(1),{1,1,1,1,1,1,1,1});
 
 
-  tch0.SetRootQueueDisc ("ns3::TasQueueDisc", "SchudlePlan", SchudlePlanValue(schudlePlan0));
+  tch0.SetRootQueueDisc ("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlan0));
 
   CallbackValue timeSource = MakeCallback(&callbackfunc);
 
   tch1.SetRootQueueDisc("ns3::TasQueueDisc",
-      "SchudlePlan", SchudlePlanValue(schudlePlan1),
+      "TasConfig", TasConfigValue(schedulePlan1),
       "TimeSource", timeSource
       );
 

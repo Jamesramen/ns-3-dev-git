@@ -21,58 +21,60 @@
 #ifndef SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_
 #define SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_
 
+#define TOTAL_QOS_TAGS 8 //needs to be a power of 2
+
 #include "ns3/queue-disc.h"
 #include <array>
 #include <vector>
 
 namespace ns3 {
 
-typedef std::array<bool,8> QostagsMap; // Maps witch Queues schuld be opend on the Qos Tag
+typedef std::array<bool,TOTAL_QOS_TAGS> QostagsMap; // Maps witch Queues schuld be opend on the Qos Tag
 
-typedef struct TasSchudle{
+typedef struct TasSchedule{
   Time duration;
   QostagsMap qostagsMap;
   Time startOffset;
   Time stopOffset;
-  TasSchudle(Time duration, QostagsMap qostagsMap,  Time startOffset = Time(0), Time stopOffset = Time(0)){
+  TasSchedule(Time duration, QostagsMap qostagsMap,  Time startOffset = Time(0), Time stopOffset = Time(0)){
     this->duration = duration;
-    for(unsigned int i = 0; i < 8; i++){
+    for(unsigned int i = 0; i < TOTAL_QOS_TAGS; i++){
       this->qostagsMap[i] = qostagsMap[i];
     }
     this->startOffset = startOffset;
     this->stopOffset = stopOffset;
   }
-}TasSchudle;
+}TasSchedule;
 
-typedef struct SchudlePlan{
-  std::vector<TasSchudle> plan;
-  Time length;
-  SchudlePlan(){
-    this->length = Time(0);
-      this->plan.clear();
+typedef struct TasConfig{
+  std::vector<TasSchedule> scheduleList;
+  Time cycleLength;
+  TasConfig(){
+    this->cycleLength = Time(0);
+      this->scheduleList.clear();
   }
-  SchudlePlan(std::vector<TasSchudle> plan){
-    this->length = Time(0);
-    this->plan.clear();
-    for(unsigned int i = 0; i < plan.size(); i++){
-      this->plan.push_back(plan.at(i));
-      this->length += plan.at(i).duration;
+  TasConfig(std::vector<TasSchedule> scheduleList){
+    this->cycleLength = Time(0);
+    this->scheduleList.clear();
+    for(unsigned int i = 0; i < scheduleList.size(); i++){
+      this->scheduleList.push_back(scheduleList.at(i));
+      this->cycleLength += scheduleList.at(i).duration;
     }
   }
-  void addSchudle(TasSchudle schudle){
-    if(!schudle.duration.IsZero()){
-       this->plan.push_back(schudle);
-       this->length += schudle.duration;
+  void addSchedule(TasSchedule schedule){
+    if(!schedule.duration.IsZero()){
+       this->scheduleList.push_back(schedule);
+       this->cycleLength += schedule.duration;
      }
   }
-  void addSchudle(Time duration, QostagsMap gatemap, Time startOffset = Time(0), Time stopOffset = Time(0)){
-    TasSchudle schudle(duration,gatemap,startOffset,stopOffset);
-    if(!schudle.duration.IsZero()){
-         this->plan.push_back(schudle);
-         this->length += schudle.duration;
+  void addSchedule(Time duration, QostagsMap gatemap, Time startOffset = Time(0), Time stopOffset = Time(0)){
+    TasSchedule schedule(duration,gatemap,startOffset,stopOffset);
+    if(!schedule.duration.IsZero()){
+         this->scheduleList.push_back(schedule);
+         this->cycleLength += schedule.duration;
        }
     }
-}SchudlePlan;
+}TasConfig;
 
 /**
  * \ingroup traffic-control
@@ -112,17 +114,22 @@ private:
   virtual Ptr<QueueDiscItem> DoDequeue (void);
   virtual Ptr<const QueueDiscItem> DoPeek (void);
 
-  virtual Time GetDeviceTime();//TODO
+  virtual Time GetDeviceTime();//TODO connect Node device Time to Queue Disc
   virtual Time TimeUntileQueueOpens(int qostag);//TODO callc packed transmissionTime
 
-  SchudlePlan m_schudlePlan;
+  void SchudleRun(uint32_t queue);
+  void SchudleCallBack(uint32_t queue);
+
+  std::array<EventId,TOTAL_QOS_TAGS> queuesToBeOpend;
+
+  TasConfig m_tasConfig;
   bool m_trustQostag;
 
   Callback <Time> m_getNow;
 };
 
 /**
- * Serialize the SchudlePlan to the given ostream
+ * Serialize the TasConfig to the given ostream
  *
  * \param os
  * \param priomap
@@ -130,19 +137,19 @@ private:
  * \return std::ostream
  */
 std::ostream &operator << (std::ostream &os, const QostagsMap &qostagsMap);
-std::ostream &operator << (std::ostream &os, const TasSchudle &tasSchudle);
-std::ostream &operator << (std::ostream &os, const SchudlePlan &schudlePlan);
+std::ostream &operator << (std::ostream &os, const TasSchedule &tasSchedule);
+std::ostream &operator << (std::ostream &os, const TasConfig &tasConfig);
 
 /**
- * Serialize from the given istream to this SchudlePlan.
+ * Serialize from the given istream to this TasConfig.
  *
  * \return std::istream
  */
 std::istream &operator >> (std::istream &is, QostagsMap &qostagsMap);
-std::istream &operator >> (std::istream &is, TasSchudle &tasSchudle);
-std::istream &operator >> (std::istream &is, SchudlePlan &schudlePlan);
+std::istream &operator >> (std::istream &is, TasSchedule &tasSchedule);
+std::istream &operator >> (std::istream &is, TasConfig &tasConfig);
 
-ATTRIBUTE_HELPER_HEADER (SchudlePlan);
+ATTRIBUTE_HELPER_HEADER (TasConfig);
 };// namespace ns3
 
 #endif /* SRC_TRAFFIC_CONTROL_MODEL_TAS_QUEUE_DISC_H_ */
