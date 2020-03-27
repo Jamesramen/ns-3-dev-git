@@ -16,12 +16,14 @@
 
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
+#include "ns3/csma-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
-#include "ns3/traffic-control-module.h"
+#include "ns3/ipv4-global-routing-helper.h"
+
 #include "ns3/tsn-module.h"
-#include "ns3/udp-echo-client.h"
+#include "ns3/traffic-control-module.h"
 
 #include "stdio.h"
 #include <array>
@@ -47,11 +49,11 @@ main (int argc, char *argv[])
 
   Time::SetResolution (Time::MS);
   Time sendPeriod,schudleDuration;
-  schudleDuration = Seconds(1);
-  sendPeriod = schudleDuration/10;
+  schudleDuration = Seconds(10);
+  sendPeriod = schudleDuration/2;
 
-//  LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
-//  LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
+  //LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
+  //LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
   CallbackValue timeSource = MakeCallback(&callbackfunc);
   NodeContainer nodes;
@@ -60,7 +62,8 @@ main (int argc, char *argv[])
   pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
   pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
 
-  for(int i = 0; i < NUMBER_OF_NODE_PAIRS; i++){
+  for(int i = 0; i < NUMBER_OF_NODE_PAIRS; i++)
+  {
     NodeContainer subNodes;
     subNodes.Create(2);
 
@@ -72,22 +75,21 @@ main (int argc, char *argv[])
 
     TsnHelper tsnHelperServer,tsnHelperClient;
     TasConfig schedulePlanServer,schedulePlanClient;
-
     for(int i = 0; i < NUMBER_OF_SCHUDLE_ENTRYS/2; i++)
     {
-      schedulePlanServer.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
-      schedulePlanServer.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
-
-      schedulePlanClient.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
       schedulePlanClient.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
+      schedulePlanClient.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
+
+      schedulePlanServer.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
+      schedulePlanServer.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
     }
 
-    tsnHelperServer.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanServer), "TimeSource", timeSource);
     tsnHelperClient.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanClient), "TimeSource", timeSource);
-
     tsnHelperClient.AddPacketFilter(0,"ns3::TsnIpv4PacketFilter","Classify",CallbackValue(MakeCallback(&ipv4PacketFilter)));
 
-    QueueDiscContainer qdiscsClient = tsnHelperClient.Install (devices.Get(0));
+    tsnHelperServer.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanServer), "TimeSource", timeSource);
+
+    QueueDiscContainer qdiscsClient1 = tsnHelperClient.Install (devices.Get(0));
     QueueDiscContainer qdiscsServer = tsnHelperServer.Install (devices.Get(1));
 
     Ipv4AddressHelper address;
@@ -107,34 +109,36 @@ main (int argc, char *argv[])
 
     Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
+    UdpEchoClientHelper echoClient1 (interfaces.GetAddress (1), 9);
+
+    echoClient1.SetAttribute ("MaxPackets", UintegerValue (100));
+    echoClient1.SetAttribute ("Interval", TimeValue (sendPeriod));
+    echoClient1.SetAttribute ("PacketSize", UintegerValue (64));
+
+    ApplicationContainer clientApps1 = echoClient1.Install (subNodes.Get (0));
+    ApplicationContainer clientApps2 = echoClient1.Install (subNodes.Get (0));
+
+    clientApps1.Start (sendPeriod/2);
+    clientApps1.Stop (10*schudleDuration);
+
+    clientApps2.Start(Seconds(0));
+    clientApps2.Stop(sendPeriod/2);
+
     UdpEchoServerHelper echoServer (9);
-    UdpEchoClientHelper echoClient (interfaces.GetAddress (1), 9);
-
-    echoClient.SetAttribute ("MaxPackets", UintegerValue (99999));
-    echoClient.SetAttribute ("Interval", TimeValue (sendPeriod));
-    echoClient.SetAttribute ("PacketSize", UintegerValue (100));
-
-    ApplicationContainer clientApps = echoClient.Install (subNodes.Get (0));
-
-//    echoClient.SetFill(clientApps.Get(0),"Data");
-    clientApps.Start (Seconds (0));
-    clientApps.Stop (Seconds (9));
-
     ApplicationContainer serverApps = echoServer.Install (subNodes.Get (1));
-    serverApps.Start (Seconds (0));
-    serverApps.Stop (Seconds (10.0));
 
+    serverApps.Start (Seconds (0));
+    serverApps.Stop (12*schudleDuration);
     nodes.Add(subNodes);
   }
-
-//  tch0.AddPacketFilter(0,"ns3::TsnIpv4PacketFilter","Classify",CallbackValue(MakeCallback(&ipv4PacketFilter)));
-  pointToPoint.EnablePcap ("scratch-simulator", nodes.Get(0)->GetId(),0);
+//  pointToPoint.EnablePcap ("tas-test1", nodes.Get (1)->GetId(),0);
+  pointToPoint.EnablePcapAll("tas-test1");
 
   std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
   Simulator::Run ();
   std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
   Simulator::Destroy ();
-  std::cout << NUMBER_OF_NODE_PAIRS*2 << " Nodes " <<"Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
+  std::cout << NUMBER_OF_NODE_PAIRS*2 << " Nodes " <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
   return 0;
 }
 

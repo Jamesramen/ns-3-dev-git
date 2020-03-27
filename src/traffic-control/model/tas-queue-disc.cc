@@ -168,35 +168,35 @@ TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
   int32_t childqueue = 0; // 0 Best effort Queue
 
   if (ret == PacketFilter::PF_NO_MATCH)
-   {
-     NS_LOG_DEBUG ("No filter has been able to classify this packet, using priomap.");
+  {
+   NS_LOG_DEBUG ("No filter has been able to classify this packet, using priomap.");
 
+   SocketPriorityTag qosTag;
+   if (item->GetPacket ()->PeekPacketTag (qosTag))
+   {
+     childqueue = qosTag.GetPriority () & (TOTAL_QOS_TAGS*2-1); // Max queue is TOTAL_QOS_TAGS
+   }
+   else
+   {
+     qosTag.SetPriority(childqueue);
+     item->GetPacket()->AddPacketTag(qosTag);
+   }
+  }
+  else
+  {
+    NS_LOG_DEBUG ("Packet filters returned " << ret);
+
+    if (ret >= 0 && static_cast<uint32_t>(ret) < GetNInternalQueues () )
+    {
+     childqueue = ret;
+    }
+    else
+    {
      SocketPriorityTag qosTag;
-     if (item->GetPacket ()->PeekPacketTag (qosTag))
-       {
-       childqueue = qosTag.GetPriority () & (TOTAL_QOS_TAGS*2-1); // Max queue is TOTAL_QOS_TAGS
-       }
-     else
-     {
-       qosTag.SetPriority(childqueue);
-       item->GetPacket()->AddPacketTag(qosTag);
-     }
-   }
- else
-   {
-     NS_LOG_DEBUG ("Packet filters returned " << ret);
-
-     if (ret >= 0 && static_cast<uint32_t>(ret) < GetNInternalQueues () )
-       {
-       childqueue = ret;
-       }
-     else
-     {
-       SocketPriorityTag qosTag;
-       qosTag.SetPriority(childqueue);
-       item->GetPacket()->AddPacketTag(qosTag);
-     }
-   }
+     qosTag.SetPriority(childqueue);
+     item->GetPacket()->AddPacketTag(qosTag);
+    }
+  }
 
   bool retval = GetInternalQueue (childqueue)->Enqueue (item);
 
@@ -206,74 +206,41 @@ TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
   return retval;
 }
 
-int
+std::pair<int32_t, Time>
 TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
 {
-  int internelQueue = -1; // Defaut Value represents no Queue to Open
-  QostagsMap queuesToOpen;
-
-  int highestQueueToOpen = -1;
-
-  for(unsigned int i = 0; i < TOTAL_QOS_TAGS; i++)
+  //No valid schudle Configured
+  if(m_tasConfig.cycleLength.IsZero())
+  {
+    for(int i = TOTAL_QOS_TAGS-1; i > -1 ; i--)
     {
-      if(!GetInternalQueue (i)->IsEmpty())
-        {
-          queuesToOpen[i] = true;
-          if(highestQueueToOpen < 0){
-            highestQueueToOpen = i;
-          }
-        }
-      else
+      if(! (GetInternalQueue (i)->IsEmpty()) )
       {
-        queuesToOpen[i] = false;
+        return std::make_pair(i,Time(0));
       }
     }
-
-  if(highestQueueToOpen < 0) // No items in queues
-    {
-      return internelQueue;
-    }
-
-  if(this->m_tasConfig.scheduleList.size())
-  {
-      Time simulationTime = GetDeviceTime();
-      Time timeIndex( simulationTime.GetInteger() % this->m_tasConfig.cycleLength.GetInteger() ); // Reletive time in schedule
-      Time timeQueueXCloses(0);
-
-      for(unsigned int i = 0; i < this->m_tasConfig.scheduleList.size(); i++)
-        {
-
-          timeQueueXCloses += this->m_tasConfig.scheduleList.at(i).duration; // Time point when schedule i closes and i+1 opens
-
-          bool forwardCheck = true; // if current schedule will be executed without wrap around
-
-          if(timeIndex < timeQueueXCloses - this->m_tasConfig.scheduleList.at(i).stopOffset)
-            {
-              if(internelQueue > -1) // Next schedule after wrap around is known
-                {
-                  continue; // Skip to active schedule
-                }
-              forwardCheck = false;// Check for after wrap around
-            }
-
-          for(unsigned int prio = GetNInternalQueues(); prio > 0; prio--)
-            {
-              if(this->m_tasConfig.scheduleList.at(i).qostagsMap[prio-1] && queuesToOpen[prio-1])
-               {
-               if(forwardCheck)
-                 {
-                   return prio-1;
-                 }
-               else
-                 {
-                   internelQueue = prio-1; // Saves fist Queue to Open in next Total Run of Schedule
-                 }
-               }
-            }
-        }
-      return internelQueue;
   }
-  return highestQueueToOpen; // No Schedule Plan => Prio sorted
+
+  Time simulationTime = GetDeviceTime();
+  Time timeIndex( simulationTime.GetInteger() % this->m_tasConfig.cycleLength.GetInteger() ); // Reletive time in schedule
+  Time tempTimeIndex,foundTimeIndex = m_tasConfig.cycleLength;
+
+  std::vector<Time> fastestOpenTimes;
+  int32_t queueToOpen = -1;
+
+  for(int i = TOTAL_QOS_TAGS-1; i > -1 ; i--)
+  {
+    if(! (GetInternalQueue (i)->IsEmpty()) )
+    {
+      tempTimeIndex = TimeUntileQueueOpens(i);
+      if(tempTimeIndex.IsPositive() && foundTimeIndex > tempTimeIndex)
+      {
+        foundTimeIndex = tempTimeIndex;
+        queueToOpen = i;
+      }
+    }
+  }
+  return std::make_pair(queueToOpen,foundTimeIndex);
 }
 
 Time
@@ -284,37 +251,36 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
     return Time(-1);
   }
 
-  Time simulationTime = GetDeviceTime();
-  Time timeIndex( simulationTime.GetInteger() % this->m_tasConfig.cycleLength.GetInteger() ); // Relative Time in schedule
-  Time timeQueueXCloses(0);
-  Time wrappedOpen(0);
-
-  for(unsigned int i = 0; i < this->m_tasConfig.scheduleList.size(); i++)
+  if(m_tasConfig.scheduleList.size() == 0)
    {
-
-    timeQueueXCloses += this->m_tasConfig.scheduleList.at(i).duration;
-
-       if(m_tasConfig.scheduleList.at(i).qostagsMap[qostag])
-        {
-         if(timeIndex < timeQueueXCloses - m_tasConfig.scheduleList.at(i).stopOffset) //Get Active Schedule
-           {
-             if(timeIndex >  timeQueueXCloses - m_tasConfig.scheduleList.at(i).duration + m_tasConfig.scheduleList.at(i).startOffset)
-               {
-                 return Time(0); //Queue is Active
-               }
-             else // wait until start
-               {
-                 return timeQueueXCloses - timeIndex - m_tasConfig.scheduleList.at(i).duration + m_tasConfig.scheduleList.at(i).startOffset;
-               }
-           }
-         else if(!wrappedOpen.IsZero()) //Get newest active schedule after wrap around
-           {
-             // wrappedOpen = (Time until end of schudleList) + ( Time until schedule i opens ) + startOffset
-             wrappedOpen = (m_tasConfig.cycleLength - timeIndex) + (timeQueueXCloses - m_tasConfig.scheduleList.at(i).duration) + m_tasConfig.scheduleList.at(i).startOffset ;
-           }
-        }
+     return Time(0); // No schudles configured
    }
-  return wrappedOpen;
+
+   if(m_queueOpenLookUp[qostag].openTimes.size() == 0 || m_queueOpenLookUp[qostag].closesTimes.size() == 0)
+   {
+     return Time(-1); //Queue will never Open
+   }
+
+  Time simulationTime = GetDeviceTime();
+  Time relativeNow( simulationTime.GetInteger() % m_tasConfig.cycleLength.GetInteger() ); // Relative Time in schedule
+
+  int32_t vectorPosition = GetPositionInSortedVector(m_queueOpenLookUp[qostag].closesTimes, relativeNow);
+
+  if(vectorPosition < 0)
+  {
+    return Time(-1);
+  }
+
+  if(m_queueOpenLookUp[qostag].openTimes[vectorPosition] <= relativeNow)
+  {
+    if(!(vectorPosition == 0 && m_queueOpenLookUp[qostag].closesTimes[vectorPosition] < relativeNow))
+    {
+      return Time(0);
+    }
+    return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow + m_tasConfig.cycleLength;
+  }
+
+  return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow;
 }
 
 Time
@@ -332,20 +298,15 @@ TasQueueDisc::DoDequeue (void) // Dequeues Packets and Schedule next Dequeue
 
   NS_LOG_FUNCTION (this);
 
-  int nextQueue = this->GetNextInternelQueueToOpen();
+  std::pair<int32_t, Time> nextQueue = this->GetNextInternelQueueToOpen();
 
-  if(nextQueue > -1) //There is a Queue to open
+  if(nextQueue.second.IsZero())
   {
-    Time timeUntileQueueOpens = TimeUntileQueueOpens(nextQueue);
-
-    if(timeUntileQueueOpens.IsZero()) //This queue is active
-      {
-        return GetInternalQueue(nextQueue)->Dequeue();
-      }
-    else
-      {
-        SchudleRun(nextQueue);
-      }
+    return GetInternalQueue(nextQueue.first)->Dequeue();
+  }
+  else if(nextQueue.first > -1)
+  {
+    SchudleRun(nextQueue.first);
   }
   return 0;
 }
@@ -353,10 +314,10 @@ TasQueueDisc::DoDequeue (void) // Dequeues Packets and Schedule next Dequeue
 void
 TasQueueDisc::SchudleRun(uint32_t queue)
 {
-  if(queuesToBeOpend[queue].IsExpired())
+  if(m_eventSchudlerPlan[queue].IsExpired())
   {
     Time timeUntileQueueOpens = TimeUntileQueueOpens(queue);
-    queuesToBeOpend[queue] = Simulator::Schedule(timeUntileQueueOpens,&TasQueueDisc::Run, this);
+    m_eventSchudlerPlan[queue] = Simulator::Schedule(timeUntileQueueOpens,&TasQueueDisc::Run, this);
   }
 }
 
@@ -365,13 +326,15 @@ TasQueueDisc::DoPeek (void)
 {
   NS_LOG_FUNCTION (this);
 
-  int nextQueue = this->GetNextInternelQueueToOpen();
+  std::pair <uint32_t, Time> nextQueue = this->GetNextInternelQueueToOpen();
 
-  if(nextQueue > -1){
-    return this->GetInternalQueue(nextQueue)->Peek();
-  }else{
+  if(nextQueue.second.IsPositive()){
+    return this->GetInternalQueue(nextQueue.first)->Peek();
+  }
+  else
+  {
     NS_LOG_LOGIC ("Queue empty");
-          return 0;
+    return 0;
   }
 }
 
@@ -404,9 +367,51 @@ TasQueueDisc::CheckConfig (void)
   return true;
 }
 
+template<typename T>
+int32_t
+TasQueueDisc::GetPositionInSortedVector(std::vector<T> vector, T data){
+
+  if(vector.size() == 0)
+  {
+    return -1;
+  }
+
+  typename std::vector<T>::iterator itr = vector.begin();
+
+  uint32_t  index =  0;
+
+  for(; itr < vector.end(); itr++)
+  {
+    if( *(itr) > data)
+    {
+      return index;
+    }
+  }
+
+  return 0;
+}
+
 void
 TasQueueDisc::InitializeParams (void)
 {
+  std::vector<TasSchedule>::iterator itr;
+
+  Time currentOffset = Time(0);
+  for(itr = m_tasConfig.scheduleList.begin(); itr < m_tasConfig.scheduleList.end(); itr++)
+  {
+    Time timeWindowOpensAt =  currentOffset + itr->startOffset;
+    Time timeWindowClosesAt =  currentOffset + itr->duration - itr->stopOffset;
+    currentOffset += itr->duration;
+
+    for(unsigned int queueIndex = 0; queueIndex < TOTAL_QOS_TAGS; queueIndex++)
+    {
+      if(itr->qostagsMap[queueIndex])
+      {
+        m_queueOpenLookUp[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt,itr - m_tasConfig.scheduleList.begin());
+      }
+    }
+  }
+  m_tasConfig.cycleLength = currentOffset;
   NS_LOG_FUNCTION (this);
 }
 
