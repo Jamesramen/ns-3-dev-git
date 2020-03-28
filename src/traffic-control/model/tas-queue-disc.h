@@ -30,6 +30,7 @@
 #include <math.h>
 #include <utility>
 #include <algorithm>
+#include <stdexcept>
 
 namespace ns3 {
 
@@ -40,53 +41,37 @@ typedef struct TasSchedule{
   QostagsMap qostagsMap;
   Time startOffset;
   Time stopOffset;
-  Time offset;
-  TasSchedule(Time duration, QostagsMap qostagsMap,  Time startOffset = Time(0), Time stopOffset = Time(0)){
+  TasSchedule(Time duration, QostagsMap qostagsMap, Time startOffset, Time stopOffset){
+
     this->duration = duration;
+    this->startOffset = startOffset;
+    this->stopOffset = stopOffset;
+
     for(unsigned int i = 0; i < TOTAL_QOS_TAGS; i++){
       this->qostagsMap[i] = qostagsMap[i];
     }
-    if(startOffset.IsPositive() && startOffset < duration)
+
+    if(startOffset>duration-stopOffset)
     {
-      this->startOffset = startOffset;
-      if(stopOffset.IsPositive() && stopOffset < duration - startOffset)
-      {
-        this->startOffset = stopOffset;
-      }
-      else
-      {
-        this->stopOffset = Time(0);
-      }
+      throw std::out_of_range("Start offset is greater then duration minus stop offset, resulting in an negative opening time");
     }
-    else
-    {
-      this->startOffset = Time(0);
-      this->stopOffset = Time(0);
-    }
-    this->offset = Time(0);
   }
 }TasSchedule;
 
 typedef struct TasConfig{
-  std::vector<TasSchedule> scheduleList;
-  Time cycleLength;
+  std::vector<TasSchedule> list;
   TasConfig(){
-    this->cycleLength = Time(0);
-    this->scheduleList.clear();
+    this->list.clear();
   }
-  TasConfig(std::vector<TasSchedule> scheduleList){
-    this->cycleLength = Time(0);
-    this->scheduleList.clear();
-    for(unsigned int i = 0; i < scheduleList.size(); i++){
-      this->scheduleList.push_back(scheduleList.at(i));
-      this->scheduleList.at(i).offset = this->cycleLength;
-      this->cycleLength += scheduleList.at(i).duration;
+  TasConfig(std::vector<TasSchedule> list){
+    this->list.clear();
+    for(unsigned int i = 0; i < list.size(); i++){
+      this->list.push_back(list.at(i));
     }
   }
   void addSchedule(TasSchedule schedule){
     if(!schedule.duration.IsZero()){
-       this->scheduleList.push_back(schedule);
-       this->cycleLength += schedule.duration;
+       this->list.push_back(schedule);
      }
   }
   void addSchedule(Time duration, QostagsMap gatemap, Time startOffset = Time(0), Time stopOffset = Time(0)){
@@ -119,6 +104,11 @@ private:
     std::vector<Time> openTimes;
     std::vector<Time> closesTimes;
     std::vector<uint32_t> indexVector;
+    int myLastIndex;
+    lookUpElement()
+    {
+      myLastIndex = 0;
+    }
     void add(Time opens, Time closes, uint32_t index)
     {
       openTimes.push_back(opens);
@@ -155,7 +145,7 @@ private:
   virtual Time GetDeviceTime(); //TODO connect Node device Time to Queue Disc
   virtual Time TimeUntileQueueOpens(int qostag); //TODO callc packed transmissionTime
 
-  void SchudleRun(uint32_t queue);
+  void SchudleRun(uint32_t queue, Time eventTime);
 
   std::array<EventId,TOTAL_QOS_TAGS> m_eventSchudlerPlan;
   std::array<lookUpElement,TOTAL_QOS_TAGS> m_queueOpenLookUp;
@@ -163,6 +153,8 @@ private:
   template<typename T>
   int32_t GetPositionInSortedVector(std::vector<T> vector, T data);
 
+  DataRate m_linkBandwidth;
+  Time m_cycleLength;
   TasConfig m_tasConfig;
   bool m_trustQostag;
 

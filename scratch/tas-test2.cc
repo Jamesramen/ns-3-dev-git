@@ -30,11 +30,12 @@
 #include <string>
 #include <chrono>
 
-#define NUMBER_OF_SCHUDLE_ENTRYS 10
+#define DATA_PAYLOADE_SIZE 10
+#define TRANSMISON_SPEED "50Mbps"
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("ScratchSimulator");
+NS_LOG_COMPONENT_DEFINE ("Tas-test-2");
 
 Time callbackfunc();
 
@@ -49,9 +50,9 @@ main (int argc, char *argv[])
   Time::SetResolution (Time::NS);
   Time sendPeriod,schudleDuration,simulationDuration;
   schudleDuration = Seconds(1);
-  simulationDuration = 2*schudleDuration*NUMBER_OF_SCHUDLE_ENTRYS;
-  sendPeriod = MilliSeconds(250);
-
+  simulationDuration = 2*schudleDuration*20;
+  sendPeriod = schudleDuration;
+  sendPeriod -= Time(1);
   LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
   LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
@@ -60,7 +61,7 @@ main (int argc, char *argv[])
 
   nodes.Create (2);
   PointToPointHelper pointToPoint;
-  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
+  pointToPoint.SetDeviceAttribute ("DataRate", StringValue (TRANSMISON_SPEED));
   pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
 
   NetDeviceContainer devices;
@@ -72,7 +73,7 @@ main (int argc, char *argv[])
   TsnHelper tsnHelperServer,tsnHelperClient;
   TasConfig schedulePlanServer,schedulePlanClient;
 
-  for (int i = 0; i < NUMBER_OF_SCHUDLE_ENTRYS/2; i++)
+  for (int i = 0; i < 10; i++)
   {
     schedulePlanClient.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
     schedulePlanClient.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
@@ -81,10 +82,10 @@ main (int argc, char *argv[])
     schedulePlanServer.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
   }
 
-  tsnHelperClient.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanClient), "TimeSource", timeSource,"DataRate", StringValue ("5Mbps"));
+  tsnHelperClient.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanClient), "TimeSource", timeSource,"DataRate", StringValue (TRANSMISON_SPEED));
   tsnHelperClient.AddPacketFilter(0,"ns3::TsnIpv4PacketFilter","Classify",CallbackValue(MakeCallback(&ipv4PacketFilter)));
 
-  tsnHelperServer.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanServer), "TimeSource", timeSource,"DataRate", StringValue ("5Mbps"));
+  tsnHelperServer.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanServer), "TimeSource", timeSource,"DataRate", StringValue (TRANSMISON_SPEED));
 
   QueueDiscContainer qdiscsClient1 = tsnHelperClient.Install (devices.Get(0));
   QueueDiscContainer qdiscsServer = tsnHelperServer.Install (devices.Get(1));
@@ -99,7 +100,7 @@ main (int argc, char *argv[])
 
   echoClient1.SetAttribute ("MaxPackets", UintegerValue (simulationDuration.GetInteger()/sendPeriod.GetInteger()));
   echoClient1.SetAttribute ("Interval", TimeValue (sendPeriod));
-  echoClient1.SetAttribute ("PacketSize", UintegerValue (64));
+  echoClient1.SetAttribute ("PacketSize", UintegerValue (DATA_PAYLOADE_SIZE));
 
   ApplicationContainer clientApps1 = echoClient1.Install (nodes.Get (0));
 
@@ -116,16 +117,15 @@ main (int argc, char *argv[])
   serverApps.Stop (simulationDuration);
 
 //  pointToPoint.EnablePcap ("tas-test1", nodes.Get (1)->GetId(),0);
-  pointToPoint.EnablePcapAll("tas-test1");
+  pointToPoint.EnablePcapAll("tas-test2");
 
   std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
   Simulator::Run ();
   std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
   Simulator::Destroy ();
-  std::cout << 1*2 << " Nodes " << std::endl;
-  std::cout << " Total simulatet Time: "<< simulationDuration << " Expectated number of Packedges in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() << std::endl;
-  std::cout <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
-  std::cout << "Nodes: 3" << " Schudle duration: "<< schudleDuration <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
+  std::cout << 2 << " Nodes " << std::endl;
+  std::cout << "Total simulatet Time: "<< simulationDuration << " Expectated number of Packedges in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() << std::endl;
+  std::cout << "Schudle duration: "<< schudleDuration <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
   return 0;
 }
 

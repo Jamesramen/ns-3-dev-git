@@ -30,12 +30,12 @@
 #include <string>
 #include <chrono>
 
-#define NUMBER_OF_NODE_PAIRS 1000
-#define NUMBER_OF_SCHUDLE_ENTRYS 2
+#define NUMBER_OF_NODE_PAIRS 100
+#define NUMBER_OF_SCHUDLE_ENTRYS 20
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("ScratchSimulator");
+NS_LOG_COMPONENT_DEFINE ("Tas-test-performance");
 
 Time callbackfunc();
 
@@ -44,16 +44,18 @@ int32_t ipv4PacketFilter(Ptr<QueueDiscItem> item);
 int
 main (int argc, char *argv[])
 {
+  std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
   CommandLine cmd;
   cmd.Parse (argc, argv);
 
   Time::SetResolution (Time::MS);
-  Time sendPeriod,schudleDuration;
-  schudleDuration = Seconds(10);
+  Time sendPeriod,schudleDuration,simulationDuration;
+  schudleDuration = Seconds(2);
+  simulationDuration = 2*schudleDuration*NUMBER_OF_SCHUDLE_ENTRYS;
   sendPeriod = schudleDuration/2;
 
-  //LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
-  //LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
+//  LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
+//  LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
   CallbackValue timeSource = MakeCallback(&callbackfunc);
   NodeContainer nodes;
@@ -111,7 +113,7 @@ main (int argc, char *argv[])
 
     UdpEchoClientHelper echoClient1 (interfaces.GetAddress (1), 9);
 
-    echoClient1.SetAttribute ("MaxPackets", UintegerValue (100));
+    echoClient1.SetAttribute ("MaxPackets", UintegerValue (2*simulationDuration.GetInteger()/sendPeriod.GetInteger()));
     echoClient1.SetAttribute ("Interval", TimeValue (sendPeriod));
     echoClient1.SetAttribute ("PacketSize", UintegerValue (64));
 
@@ -119,7 +121,7 @@ main (int argc, char *argv[])
     ApplicationContainer clientApps2 = echoClient1.Install (subNodes.Get (0));
 
     clientApps1.Start (sendPeriod/2);
-    clientApps1.Stop (10*schudleDuration);
+    clientApps1.Stop (simulationDuration);
 
     clientApps2.Start(Seconds(0));
     clientApps2.Stop(sendPeriod/2);
@@ -128,17 +130,19 @@ main (int argc, char *argv[])
     ApplicationContainer serverApps = echoServer.Install (subNodes.Get (1));
 
     serverApps.Start (Seconds (0));
-    serverApps.Stop (12*schudleDuration);
+    serverApps.Stop (simulationDuration);
     nodes.Add(subNodes);
   }
-//  pointToPoint.EnablePcap ("tas-test1", nodes.Get (1)->GetId(),0);
-  pointToPoint.EnablePcapAll("tas-test1");
+  pointToPoint.EnablePcap ("tas-perf", nodes.Get (1)->GetId(),0);
+//  pointToPoint.EnablePcapAll("tas-test1");
 
-  std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+
   Simulator::Run ();
-  std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
   Simulator::Destroy ();
-  std::cout << NUMBER_OF_NODE_PAIRS*2 << " Nodes " <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
+  std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
+  std::cout << NUMBER_OF_NODE_PAIRS*2 << " Nodes " << std::endl;
+  std::cout << " Total simulatet Time: "<< simulationDuration << " Expectated number of Packedges in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() +1 << std::endl;
+  std::cout <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
   return 0;
 }
 

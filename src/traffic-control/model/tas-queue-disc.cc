@@ -63,9 +63,9 @@ std::ostream &
 operator << (std::ostream &os, const TasConfig &tasConfig)
 {
 
-  if(!tasConfig.scheduleList.empty()){
-    for(unsigned int i = 0; i < (unsigned int)tasConfig.scheduleList.size() -1; i++ ){
-      os << tasConfig.scheduleList.at(i);
+  if(!tasConfig.list.empty()){
+    for(unsigned int i = 0; i < (unsigned int)tasConfig.list.size() -1; i++ ){
+      os << tasConfig.list.at(i);
     }
   }
   os << 0; // End character
@@ -95,14 +95,12 @@ std::istream &
 operator >> (std::istream &is, TasConfig &tasConfig){
 
   unsigned int i = 0;
-  tasConfig.scheduleList.clear();
-  tasConfig.cycleLength = Time(0);
+  tasConfig.list.clear();
 
   while(is.peek()){
-    if(!(is >> tasConfig.scheduleList.at(i))){
+    if(!(is >> tasConfig.list.at(i))){
       NS_FATAL_ERROR ("Unspecified fatal error tasConfig input stream");
     }
-    tasConfig.cycleLength += tasConfig.scheduleList.at(i).duration;
   }
 
   if(i == 0){
@@ -137,6 +135,11 @@ TypeId TasQueueDisc::GetTypeId (void)
                                           &QueueDisc::GetMaxSize),
                    MakeQueueSizeChecker ()
                    )
+   .AddAttribute ("DataRate",
+                  "DataRate of conected link",
+                  DataRateValue (DataRate ("1.5Mbps")),
+                  MakeDataRateAccessor (&TasQueueDisc::m_linkBandwidth),
+                  MakeDataRateChecker ())
    .AddAttribute("TimeSource",
                  "function callback to get Current Time ",
                  CallbackValue (),
@@ -210,7 +213,7 @@ std::pair<int32_t, Time>
 TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
 {
   //No valid schudle Configured
-  if(m_tasConfig.cycleLength.IsZero())
+  if(m_cycleLength.IsZero())
   {
     for(int i = TOTAL_QOS_TAGS-1; i > -1 ; i--)
     {
@@ -222,8 +225,8 @@ TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
   }
 
   Time simulationTime = GetDeviceTime();
-  Time timeIndex( simulationTime.GetInteger() % this->m_tasConfig.cycleLength.GetInteger() ); // Reletive time in schedule
-  Time tempTimeIndex,foundTimeIndex = m_tasConfig.cycleLength;
+  Time timeIndex( simulationTime.GetInteger() % this->m_cycleLength.GetInteger() ); // Reletive time in schedule
+  Time tempTimeIndex,foundTimeIndex = m_cycleLength;
 
   std::vector<Time> fastestOpenTimes;
   int32_t queueToOpen = -1;
@@ -251,7 +254,7 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
     return Time(-1);
   }
 
-  if(m_tasConfig.scheduleList.size() == 0)
+  if(m_tasConfig.list.size() == 0)
    {
      return Time(0); // No schudles configured
    }
@@ -262,22 +265,31 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
    }
 
   Time simulationTime = GetDeviceTime();
-  Time relativeNow( simulationTime.GetInteger() % m_tasConfig.cycleLength.GetInteger() ); // Relative Time in schedule
 
+  double bitRate(1.0/m_linkBandwidth.GetBitRate());
+  int paketBitSize = 8*GetInternalQueue(qostag)->Peek()->GetSize();
+  double result = bitRate*paketBitSize*1000*1000*1000;
+
+  Time transmitionTime = PicoSeconds(result);
+  Time relativeNow( simulationTime.GetInteger() % m_cycleLength.GetInteger()); // Relative Time in schedule
+  relativeNow += transmitionTime;
   int32_t vectorPosition = GetPositionInSortedVector(m_queueOpenLookUp[qostag].closesTimes, relativeNow);
+  relativeNow -= transmitionTime;
 
   if(vectorPosition < 0)
   {
     return Time(-1);
   }
 
+  m_queueOpenLookUp[qostag].myLastIndex = vectorPosition;
+
   if(m_queueOpenLookUp[qostag].openTimes[vectorPosition] <= relativeNow)
   {
-    if(!(vectorPosition == 0 && m_queueOpenLookUp[qostag].closesTimes[vectorPosition] < relativeNow))
+    if(!(vectorPosition == 0 && m_queueOpenLookUp[qostag].closesTimes[vectorPosition] < relativeNow + transmitionTime))
     {
       return Time(0);
     }
-    return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow + m_tasConfig.cycleLength;
+    return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow + m_cycleLength;
   }
 
   return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow;
@@ -302,22 +314,21 @@ TasQueueDisc::DoDequeue (void) // Dequeues Packets and Schedule next Dequeue
 
   if(nextQueue.second.IsZero())
   {
-    return GetInternalQueue(nextQueue.first)->Dequeue();
+    return GetInternalQueue(nextQueue.first)->Dequeue(); ;
   }
   else if(nextQueue.first > -1)
   {
-    SchudleRun(nextQueue.first);
+    SchudleRun(nextQueue.first, nextQueue.second);
   }
   return 0;
 }
 
 void
-TasQueueDisc::SchudleRun(uint32_t queue)
+TasQueueDisc::SchudleRun(uint32_t queue, Time eventTime)
 {
   if(m_eventSchudlerPlan[queue].IsExpired())
   {
-    Time timeUntileQueueOpens = TimeUntileQueueOpens(queue);
-    m_eventSchudlerPlan[queue] = Simulator::Schedule(timeUntileQueueOpens,&TasQueueDisc::Run, this);
+    m_eventSchudlerPlan[queue] = Simulator::Schedule(eventTime,&TasQueueDisc::Run, this);
   }
 }
 
@@ -378,13 +389,11 @@ TasQueueDisc::GetPositionInSortedVector(std::vector<T> vector, T data){
 
   typename std::vector<T>::iterator itr = vector.begin();
 
-  uint32_t  index =  0;
-
   for(; itr < vector.end(); itr++)
   {
     if( *(itr) > data)
     {
-      return index;
+      return itr - vector.begin();
     }
   }
 
@@ -397,7 +406,7 @@ TasQueueDisc::InitializeParams (void)
   std::vector<TasSchedule>::iterator itr;
 
   Time currentOffset = Time(0);
-  for(itr = m_tasConfig.scheduleList.begin(); itr < m_tasConfig.scheduleList.end(); itr++)
+  for(itr = m_tasConfig.list.begin(); itr < m_tasConfig.list.end(); itr++)
   {
     Time timeWindowOpensAt =  currentOffset + itr->startOffset;
     Time timeWindowClosesAt =  currentOffset + itr->duration - itr->stopOffset;
@@ -407,11 +416,11 @@ TasQueueDisc::InitializeParams (void)
     {
       if(itr->qostagsMap[queueIndex])
       {
-        m_queueOpenLookUp[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt,itr - m_tasConfig.scheduleList.begin());
+        m_queueOpenLookUp[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt,itr - m_tasConfig.list.begin());
       }
     }
   }
-  m_tasConfig.cycleLength = currentOffset;
+  m_cycleLength = currentOffset;
   NS_LOG_FUNCTION (this);
 }
 
