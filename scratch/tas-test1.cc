@@ -12,6 +12,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
  */
 
 #include "ns3/core-module.h"
@@ -30,7 +31,7 @@
 #include <string>
 #include <chrono>
 
-#define NUMBER_OF_SCHUDLE_ENTRYS 10
+#define NUMBER_OF_SCHEDULE_ENTRYS 10
 
 using namespace ns3;
 
@@ -47,9 +48,9 @@ main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   Time::SetResolution (Time::NS);
-  Time sendPeriod,schudleDuration,simulationDuration;
-  schudleDuration = Seconds(1);
-  simulationDuration = 2*schudleDuration*NUMBER_OF_SCHUDLE_ENTRYS;
+  Time sendPeriod,scheduleDuration,simulationDuration;
+  scheduleDuration = Seconds(1);
+  simulationDuration = 2*scheduleDuration*NUMBER_OF_SCHEDULE_ENTRYS;
   sendPeriod = MilliSeconds(250);
 
   LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
@@ -72,13 +73,13 @@ main (int argc, char *argv[])
   TsnHelper tsnHelperServer,tsnHelperClient;
   TasConfig schedulePlanServer,schedulePlanClient;
 
-  for (int i = 0; i < NUMBER_OF_SCHUDLE_ENTRYS/2; i++)
+  for (int i = 0; i < NUMBER_OF_SCHEDULE_ENTRYS/2; i++)
   {
-    schedulePlanClient.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
-    schedulePlanClient.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
+    schedulePlanClient.addSchedule(scheduleDuration,{1,1,1,1,1,1,1,1});
+    schedulePlanClient.addSchedule(scheduleDuration,{0,0,0,0,0,0,0,0});
 
-    schedulePlanServer.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
-    schedulePlanServer.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
+    schedulePlanServer.addSchedule(scheduleDuration,{0,0,0,0,0,0,0,0});
+    schedulePlanServer.addSchedule(scheduleDuration,{1,1,1,1,1,1,1,1});
   }
 
   tsnHelperClient.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanClient), "TimeSource", timeSource,"DataRate", StringValue ("5Mbps"));
@@ -122,10 +123,10 @@ main (int argc, char *argv[])
   Simulator::Run ();
   std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
   Simulator::Destroy ();
-  std::cout << 1*2 << " Nodes " << std::endl;
-  std::cout << " Total simulatet Time: "<< simulationDuration << " Expectated number of Packedges in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() << std::endl;
-  std::cout <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
-  std::cout << "Nodes: 3" << " Schudle duration: "<< schudleDuration <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
+  std::cout << 2 << " Nodes " << std::endl;
+  std::cout << "Total simulated Time: "<< simulationDuration << std::endl;
+  std::cout << "Expectated number of packages in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() << std::endl;
+  std::cout << "Schedule duration: "<< scheduleDuration <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
   return 0;
 }
 
@@ -136,6 +137,3 @@ int32_t ipv4PacketFilter(Ptr<QueueDiscItem> item){
 Time callbackfunc(){
   return Simulator::Now();
 }
-
-
-

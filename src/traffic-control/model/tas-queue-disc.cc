@@ -161,6 +161,23 @@ TasQueueDisc::~TasQueueDisc ()
   NS_LOG_FUNCTION (this);
 }
 
+Ptr<const QueueDiscItem>
+TasQueueDisc::DoPeek (void)
+{
+  NS_LOG_FUNCTION (this);
+
+  std::pair <uint32_t, Time> nextQueue = this->GetDequeueQueue();
+
+  if(nextQueue.second.IsPositive()){
+    return this->GetInternalQueue(nextQueue.first)->Peek();
+  }
+  else
+  {
+    NS_LOG_LOGIC ("Queue empty");
+    return 0;
+  }
+}
+
 bool
 TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
 {
@@ -209,10 +226,29 @@ TasQueueDisc::DoEnqueue (Ptr<QueueDiscItem> item)
   return retval;
 }
 
-std::pair<int32_t, Time>
-TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
+Ptr<QueueDiscItem>
+TasQueueDisc::DoDequeue (void)
 {
-  //No valid schudle Configured
+
+  NS_LOG_FUNCTION (this);
+
+  std::pair<int32_t, Time> nextQueue = this->GetDequeueQueue();
+
+  if(nextQueue.second.IsZero())
+  {
+    return GetInternalQueue(nextQueue.first)->Dequeue(); ;
+  }
+  else if(nextQueue.first > -1)
+  {
+    ScheduleRun(nextQueue.first, nextQueue.second);
+  }
+  return 0;
+}
+
+std::pair<int32_t, Time>
+TasQueueDisc::GetDequeueQueue()
+{
+  //No valid schedule configured
   if(m_cycleLength.IsZero())
   {
     for(int i = TOTAL_QOS_TAGS-1; i > -1 ; i--)
@@ -224,13 +260,12 @@ TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
     }
   }
 
-  Time simulationTime = GetDeviceTime();
-  Time timeIndex( simulationTime.GetInteger() % this->m_cycleLength.GetInteger() ); // Reletive time in schedule
   Time tempTimeIndex,foundTimeIndex = m_cycleLength;
 
   std::vector<Time> fastestOpenTimes;
   int32_t queueToOpen = -1;
 
+  //Goes through all Tags and gets the next execution time
   for(int i = TOTAL_QOS_TAGS-1; i > -1 ; i--)
   {
     if(! (GetInternalQueue (i)->IsEmpty()) )
@@ -243,6 +278,7 @@ TasQueueDisc::GetNextInternelQueueToOpen() // Calc witch Queue to Open Next
       }
     }
   }
+  //Returns the next queue to open and when
   return std::make_pair(queueToOpen,foundTimeIndex);
 }
 
@@ -259,21 +295,23 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
      return Time(0); // No schudles configured
    }
 
-   if(m_queueOpenLookUp[qostag].openTimes.size() == 0 || m_queueOpenLookUp[qostag].closesTimes.size() == 0)
+   if(m_queueLookUp[qostag].openTimes.size() == 0 || m_queueLookUp[qostag].closesTimes.size() == 0)
    {
      return Time(-1); //Queue will never Open
    }
 
   Time simulationTime = GetDeviceTime();
 
+  //Calculate Transmison time result is in Picoseconds
   double bitRate(1.0/m_linkBandwidth.GetBitRate());
   int paketBitSize = 8*GetInternalQueue(qostag)->Peek()->GetSize();
   double result = bitRate*paketBitSize*1000*1000*1000;
 
   Time transmitionTime = PicoSeconds(result);
   Time relativeNow( simulationTime.GetInteger() % m_cycleLength.GetInteger()); // Relative Time in schedule
-  relativeNow += transmitionTime;
-  int32_t vectorPosition = GetPositionInSortedVector(m_queueOpenLookUp[qostag].closesTimes, relativeNow);
+
+  relativeNow += transmitionTime; // to compensate the transmission time
+  int32_t vectorPosition = GetNextBiggerEntry(m_queueLookUp[qostag].closesTimes, relativeNow);
   relativeNow -= transmitionTime;
 
   if(vectorPosition < 0)
@@ -281,18 +319,39 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
     return Time(-1);
   }
 
-  m_queueOpenLookUp[qostag].myLastIndex = vectorPosition;
+  m_queueLookUp[qostag].myLastIndex = vectorPosition;
 
-  if(m_queueOpenLookUp[qostag].openTimes[vectorPosition] <= relativeNow)
+  if(m_queueLookUp[qostag].openTimes[vectorPosition] <= relativeNow)
   {
-    if(!(vectorPosition == 0 && m_queueOpenLookUp[qostag].closesTimes[vectorPosition] < relativeNow + transmitionTime))
+    if(!(vectorPosition == 0 && m_queueLookUp[qostag].closesTimes[vectorPosition] < relativeNow + transmitionTime))
     {
       return Time(0);
     }
-    return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow + m_cycleLength;
+    return m_queueLookUp[qostag].openTimes[vectorPosition] - relativeNow + m_cycleLength;
   }
 
-  return m_queueOpenLookUp[qostag].openTimes[vectorPosition] - relativeNow;
+  return m_queueLookUp[qostag].openTimes[vectorPosition] - relativeNow;
+}
+
+int32_t
+TasQueueDisc::GetNextBiggerEntry(std::vector<Time> vector, Time data){
+
+  if(vector.size() == 0)
+  {
+    return -1;
+  }
+
+  typename std::vector<Time>::iterator itr = vector.begin();
+
+  for(; itr < vector.end(); itr++)
+  {
+    if( *(itr) > data)
+    {
+      return itr - vector.begin();
+    }
+  }
+
+  return 0;
 }
 
 Time
@@ -304,48 +363,12 @@ TasQueueDisc::GetDeviceTime(){
   return Simulator::Now();
 }
 
-Ptr<QueueDiscItem>
-TasQueueDisc::DoDequeue (void) // Dequeues Packets and Schedule next Dequeue
-{
-
-  NS_LOG_FUNCTION (this);
-
-  std::pair<int32_t, Time> nextQueue = this->GetNextInternelQueueToOpen();
-
-  if(nextQueue.second.IsZero())
-  {
-    return GetInternalQueue(nextQueue.first)->Dequeue(); ;
-  }
-  else if(nextQueue.first > -1)
-  {
-    SchudleRun(nextQueue.first, nextQueue.second);
-  }
-  return 0;
-}
-
 void
-TasQueueDisc::SchudleRun(uint32_t queue, Time eventTime)
+TasQueueDisc::ScheduleRun(uint32_t queue, Time eventTime)
 {
-  if(m_eventSchudlerPlan[queue].IsExpired())
+  if(m_eventSchedulePlan[queue].IsExpired())
   {
-    m_eventSchudlerPlan[queue] = Simulator::Schedule(eventTime,&TasQueueDisc::Run, this);
-  }
-}
-
-Ptr<const QueueDiscItem>
-TasQueueDisc::DoPeek (void)
-{
-  NS_LOG_FUNCTION (this);
-
-  std::pair <uint32_t, Time> nextQueue = this->GetNextInternelQueueToOpen();
-
-  if(nextQueue.second.IsPositive()){
-    return this->GetInternalQueue(nextQueue.first)->Peek();
-  }
-  else
-  {
-    NS_LOG_LOGIC ("Queue empty");
-    return 0;
+    m_eventSchedulePlan[queue] = Simulator::Schedule(eventTime,&TasQueueDisc::Run, this);
   }
 }
 
@@ -378,31 +401,10 @@ TasQueueDisc::CheckConfig (void)
   return true;
 }
 
-template<typename T>
-int32_t
-TasQueueDisc::GetPositionInSortedVector(std::vector<T> vector, T data){
-
-  if(vector.size() == 0)
-  {
-    return -1;
-  }
-
-  typename std::vector<T>::iterator itr = vector.begin();
-
-  for(; itr < vector.end(); itr++)
-  {
-    if( *(itr) > data)
-    {
-      return itr - vector.begin();
-    }
-  }
-
-  return 0;
-}
-
 void
 TasQueueDisc::InitializeParams (void)
 {
+  //Creating look up table
   std::vector<TasSchedule>::iterator itr;
 
   Time currentOffset = Time(0);
@@ -416,7 +418,7 @@ TasQueueDisc::InitializeParams (void)
     {
       if(itr->qostagsMap[queueIndex])
       {
-        m_queueOpenLookUp[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt,itr - m_tasConfig.list.begin());
+        m_queueLookUp[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt,itr - m_tasConfig.list.begin());
       }
     }
   }
@@ -425,6 +427,3 @@ TasQueueDisc::InitializeParams (void)
 }
 
 } // namespace ns3
-
-
-

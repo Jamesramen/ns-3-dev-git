@@ -31,7 +31,7 @@
 #include <chrono>
 
 #define NUMBER_OF_NODE_PAIRS 100
-#define NUMBER_OF_SCHUDLE_ENTRYS 20
+#define NUMBER_OF_SCHEDULE_ENTRYS 20
 
 using namespace ns3;
 
@@ -49,10 +49,10 @@ main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   Time::SetResolution (Time::MS);
-  Time sendPeriod,schudleDuration,simulationDuration;
-  schudleDuration = Seconds(2);
-  simulationDuration = 2*schudleDuration*NUMBER_OF_SCHUDLE_ENTRYS;
-  sendPeriod = schudleDuration/2;
+  Time sendPeriod,scheduleDuration,simulationDuration;
+  scheduleDuration = Seconds(2);
+  simulationDuration = 2*scheduleDuration*NUMBER_OF_SCHEDULE_ENTRYS;
+  sendPeriod = scheduleDuration/2;
 
 //  LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
 //  LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
@@ -77,13 +77,13 @@ main (int argc, char *argv[])
 
     TsnHelper tsnHelperServer,tsnHelperClient;
     TasConfig schedulePlanServer,schedulePlanClient;
-    for(int i = 0; i < NUMBER_OF_SCHUDLE_ENTRYS/2; i++)
+    for(int i = 0; i < NUMBER_OF_SCHEDULE_ENTRYS/2; i++)
     {
-      schedulePlanClient.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
-      schedulePlanClient.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
+      schedulePlanClient.addSchedule(scheduleDuration,{1,1,1,1,1,1,1,1});
+      schedulePlanClient.addSchedule(scheduleDuration,{0,0,0,0,0,0,0,0});
 
-      schedulePlanServer.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
-      schedulePlanServer.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
+      schedulePlanServer.addSchedule(scheduleDuration,{0,0,0,0,0,0,0,0});
+      schedulePlanServer.addSchedule(scheduleDuration,{1,1,1,1,1,1,1,1});
     }
 
     tsnHelperClient.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanClient), "TimeSource", timeSource);
@@ -141,8 +141,9 @@ main (int argc, char *argv[])
   Simulator::Destroy ();
   std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
   std::cout << NUMBER_OF_NODE_PAIRS*2 << " Nodes " << std::endl;
-  std::cout << " Total simulatet Time: "<< simulationDuration << " Expectated number of Packedges in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() +1 << std::endl;
-  std::cout <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
+  std::cout << "Total simulated Time: "<< simulationDuration << std::endl;
+  std::cout << "Expectated number of packages in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() +1 << std::endl;
+  std::cout << "Execution Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
   return 0;
 }
 

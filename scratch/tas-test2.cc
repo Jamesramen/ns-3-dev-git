@@ -12,6 +12,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * This simulation shows how the tas-queue-disc can be configured and used
+ *
  */
 
 #include "ns3/core-module.h"
@@ -48,11 +51,12 @@ main (int argc, char *argv[])
   cmd.Parse (argc, argv);
 
   Time::SetResolution (Time::NS);
-  Time sendPeriod,schudleDuration,simulationDuration;
-  schudleDuration = Seconds(1);
-  simulationDuration = 2*schudleDuration*20;
-  sendPeriod = schudleDuration;
+  Time sendPeriod,scheduleDuration,simulationDuration;
+  scheduleDuration = Seconds(1);
+  simulationDuration = 2*scheduleDuration*20;
+  sendPeriod = scheduleDuration;
   sendPeriod -= Time(1);
+
   LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
   LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
@@ -75,11 +79,11 @@ main (int argc, char *argv[])
 
   for (int i = 0; i < 10; i++)
   {
-    schedulePlanClient.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
-    schedulePlanClient.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
+    schedulePlanClient.addSchedule(scheduleDuration,{1,1,1,1,1,1,1,1});
+    schedulePlanClient.addSchedule(scheduleDuration,{0,0,0,0,0,0,0,0});
 
-    schedulePlanServer.addSchedule(schudleDuration,{0,0,0,0,0,0,0,0});
-    schedulePlanServer.addSchedule(schudleDuration,{1,1,1,1,1,1,1,1});
+    schedulePlanServer.addSchedule(scheduleDuration,{0,0,0,0,0,0,0,0});
+    schedulePlanServer.addSchedule(scheduleDuration,{1,1,1,1,1,1,1,1});
   }
 
   tsnHelperClient.SetRootQueueDisc("ns3::TasQueueDisc", "TasConfig", TasConfigValue(schedulePlanClient), "TimeSource", timeSource,"DataRate", StringValue (TRANSMISON_SPEED));
@@ -124,8 +128,9 @@ main (int argc, char *argv[])
   std::chrono::time_point<std::chrono::high_resolution_clock> stop = std::chrono::high_resolution_clock::now();
   Simulator::Destroy ();
   std::cout << 2 << " Nodes " << std::endl;
-  std::cout << "Total simulatet Time: "<< simulationDuration << " Expectated number of Packedges in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() << std::endl;
-  std::cout << "Schudle duration: "<< schudleDuration <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
+  std::cout << "Total simulated Time: "<< simulationDuration << std::endl;
+  std::cout << "Expectated number of packages in pcap: " << 2*simulationDuration.GetInteger()/sendPeriod.GetInteger() << std::endl;
+  std::cout << "Schedule duration: "<< scheduleDuration <<" Execution Time " << std::chrono::duration_cast<std::chrono::milliseconds>(stop-start).count() << " ms" << std::endl;
   return 0;
 }
 

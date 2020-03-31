@@ -33,9 +33,20 @@
 #include <stdexcept>
 
 namespace ns3 {
-
-typedef std::array<bool,TOTAL_QOS_TAGS> QostagsMap; // Maps witch Queues schuld be opend on the Qos Tag
-
+/*
+ * Map of active queues
+ * true = active
+ * false = deactive
+ */
+typedef std::array<bool,TOTAL_QOS_TAGS> QostagsMap;
+/*
+ * a tas schedule
+ * params
+ * duration:    how long this schedule is active
+ * qosTagsMap:  Map of witch queues are open (active)
+ * startOffset: delay to open any queue
+ * stopOffset:  how much earlier the queue closes
+ */
 typedef struct TasSchedule{
   Time duration;
   QostagsMap qostagsMap;
@@ -57,7 +68,9 @@ typedef struct TasSchedule{
     }
   }
 }TasSchedule;
-
+/*
+ * a collection of tas schedules
+ */
 typedef struct TasConfig{
   std::vector<TasSchedule> list;
   TasConfig(){
@@ -78,7 +91,6 @@ typedef struct TasConfig{
     this->addSchedule(TasSchedule(duration,gatemap,startOffset,stopOffset));
   }
 }TasConfig;
-
 
 class TasQueueDisc : public QueueDisc {
 public:
@@ -136,29 +148,42 @@ private:
 
   virtual bool CheckConfig (void);
   virtual bool DoEnqueue (Ptr<QueueDiscItem> item);
-
-  std::pair<int32_t, Time>GetNextInternelQueueToOpen();
-
   virtual Ptr<QueueDiscItem> DoDequeue (void);
   virtual Ptr<const QueueDiscItem> DoPeek (void);
 
-  virtual Time GetDeviceTime(); //TODO connect Node device Time to Queue Disc
-  virtual Time TimeUntileQueueOpens(int qostag); //TODO callc packed transmissionTime
+  /*
+   * gets the next queue to dequeue
+   */
+  std::pair<int32_t, Time>GetDequeueQueue();
+  /*
+   * gets the current time from given timesource callback
+   * if not provided returns simulation time
+   */
+  virtual Time GetDeviceTime(); //Gets the current time TODO connect Node device Time to Queue Disc
+  /*
+   * calculates the time until queue (x) opens
+   * returns the Time and a negative Time on error
+   */
+  virtual Time TimeUntileQueueOpens(int qostag);
+  /*
+   * schedule run event for an queue
+   */
+  void ScheduleRun(uint32_t queue, Time eventTime); //
+  /*
+   * gets the biggest or equal entry to provided data
+   */
+  int32_t GetNextBiggerEntry(std::vector<Time> vector, Time data);
 
-  void SchudleRun(uint32_t queue, Time eventTime);
+  /* parameters for the TAS Queue Disc */
+  bool m_trustQostag;       //Trust the Qostag of incoming Packets or sort new
+  DataRate m_linkBandwidth; //Link Data Rate
+  TasConfig m_tasConfig;    //My Configuration
+  Callback <Time> m_getNow; //Time source callback if not set uses simulation time
 
-  std::array<EventId,TOTAL_QOS_TAGS> m_eventSchudlerPlan;
-  std::array<lookUpElement,TOTAL_QOS_TAGS> m_queueOpenLookUp;
-
-  template<typename T>
-  int32_t GetPositionInSortedVector(std::vector<T> vector, T data);
-
-  DataRate m_linkBandwidth;
-  Time m_cycleLength;
-  TasConfig m_tasConfig;
-  bool m_trustQostag;
-
-  Callback <Time> m_getNow;
+  /* variables stored by TAS Queue Disc */
+  Time m_cycleLength;                                     //The total length of all schedules combined
+  std::array<EventId,TOTAL_QOS_TAGS> m_eventSchedulePlan; //LookUpTable for all queues if an run event is planned
+  std::array<lookUpElement,TOTAL_QOS_TAGS> m_queueLookUp; //LookUpTable for schedules includes 3 std vectors with open, close and index
 };
 
 /**
