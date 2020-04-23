@@ -34,61 +34,79 @@
 
 namespace ns3 {
 /*
- * Map of active queues
- * true = active
- * false = deactive
- */
-typedef std::array<bool,TOTAL_QOS_TAGS> QostagsMap;
-/*
- * a tas schedule
+ * TasConfig
  * params
  * duration:    how long this schedule is active
  * qosTagsMap:  Map of witch queues are open (active)
  * startOffset: delay to open any queue
  * stopOffset:  how much earlier the queue closes
  */
-typedef struct TasSchedule{
-  Time duration;
-  QostagsMap qostagsMap;
-  Time startOffset;
-  Time stopOffset;
-  TasSchedule(Time duration, QostagsMap qostagsMap, Time startOffset, Time stopOffset){
-
-    this->duration = duration;
-    this->startOffset = startOffset;
-    this->stopOffset = stopOffset;
-
-    for(unsigned int i = 0; i < TOTAL_QOS_TAGS; i++){
-      this->qostagsMap[i] = qostagsMap[i];
-    }
-
-    if(startOffset>duration-stopOffset)
-    {
-      throw std::out_of_range("Start offset is greater then duration minus stop offset, resulting in an negative opening time");
-    }
-  }
-}TasSchedule;
-/*
- * a collection of tas schedules
- */
 typedef struct TasConfig{
-  std::vector<TasSchedule> list;
+  /*
+   * Map of active queues
+   * true = active
+   * false = deactive
+   */
+  typedef std::array<bool,TOTAL_QOS_TAGS> QostagsMap;
+  struct QueueSchedule{
+      std::vector<Time> openTimes;
+      std::vector<Time> closesTimes;
+      int myLastIndex;
+      QueueSchedule()
+      {
+        myLastIndex = 0;
+      }
+      void add(Time opens, Time closes)
+      {
+        unsigned int vectorSize = closesTimes.size();
+
+        if(vectorSize>0)
+        {
+          if(closesTimes.at(vectorSize-1) == opens)
+          {
+            closesTimes.at(vectorSize-1) = closes;
+            return;
+          }
+        }
+        openTimes.push_back(opens);
+        closesTimes.push_back(closes);
+      }
+      void remove(uint32_t index)
+      {
+        if( index <  openTimes.size() && index < closesTimes.size())
+        {
+          openTimes.erase(openTimes.begin() + index);
+          closesTimes.erase(closesTimes.begin() + index);
+        }
+      }
+      void clear(void)
+      {
+        openTimes.clear();
+        closesTimes.clear();
+      }
+    };
+  std::array<QueueSchedule,TOTAL_QOS_TAGS> queueSchedulePlan;
+  Time cycleLength;
   TasConfig(){
-    this->list.clear();
-  }
-  TasConfig(std::vector<TasSchedule> list){
-    this->list.clear();
-    for(unsigned int i = 0; i < list.size(); i++){
-      this->list.push_back(list.at(i));
+    for(int i = 0; i < TOTAL_QOS_TAGS; i++)
+    {
+      queueSchedulePlan[i].clear();
     }
+    cycleLength = Time(0);
   }
-  void addSchedule(TasSchedule schedule){
-    if(!schedule.duration.IsZero()){
-       this->list.push_back(schedule);
+  void addSchedule(Time duration, QostagsMap qostagsMap, Time startOffset = Time(0), Time stopOffset = Time(0)){
+    Time timeWindowOpensAt =  cycleLength + startOffset;
+    Time timeWindowClosesAt =  cycleLength + duration - stopOffset;
+
+    for(unsigned int queueIndex = 0; queueIndex < TOTAL_QOS_TAGS; queueIndex++)
+    {
+     if(qostagsMap[queueIndex])
+     {
+       queueSchedulePlan[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt);
      }
-  }
-  void addSchedule(Time duration, QostagsMap gatemap, Time startOffset = Time(0), Time stopOffset = Time(0)){
-    this->addSchedule(TasSchedule(duration,gatemap,startOffset,stopOffset));
+    }
+
+    cycleLength += duration;
   }
 }TasConfig;
 
@@ -111,38 +129,6 @@ public:
   static constexpr const char* LIMIT_EXCEEDED_DROP = "Queue disc limit exceeded";  //!< Packet dropped due to queue disc limit exceeded
 
 private:
-
-  struct lookUpElement{
-    std::vector<Time> openTimes;
-    std::vector<Time> closesTimes;
-    std::vector<uint32_t> indexVector;
-    int myLastIndex;
-    lookUpElement()
-    {
-      myLastIndex = 0;
-    }
-    void add(Time opens, Time closes, uint32_t index)
-    {
-      openTimes.push_back(opens);
-      closesTimes.push_back(closes);
-      indexVector.push_back(index);
-    }
-    void remove(uint32_t index)
-    {
-      if( index <  openTimes.size() && index < closesTimes.size() && index < indexVector.size())
-      {
-        openTimes.erase(openTimes.begin() + index);
-        closesTimes.erase(closesTimes.begin() + index);
-        indexVector.erase(indexVector.begin() + index);
-      }
-    }
-    void clear(void)
-    {
-      openTimes.clear();
-      closesTimes.clear();
-      indexVector.clear();
-    }
-  };
 
   virtual void InitializeParams (void);
 
@@ -180,24 +166,22 @@ private:
   TasConfig m_tasConfig;    //My Configuration
   Callback <Time> m_getNow; //Time source callback if not set uses simulation time
 
-  /* variables stored by TAS Queue Disc */
-  Time m_cycleLength;                                     //The total length of all schedules combined
+  /* variables stored by TAS Queue Disc */                                  //The total length of all schedules combined
   std::array<EventId,TOTAL_QOS_TAGS> m_eventSchedulePlan; //LookUpTable for all queues if an run event is planned
-  std::array<lookUpElement,TOTAL_QOS_TAGS> m_queueLookUp; //LookUpTable for schedules includes 3 std vectors with open, close and index
 };
 
 /**
  * Serialize the TasConfig to the given ostream
  */
-std::ostream &operator << (std::ostream &os, const QostagsMap &qostagsMap);
-std::ostream &operator << (std::ostream &os, const TasSchedule &tasSchedule);
+std::ostream &operator << (std::ostream &os, const TasConfig::QostagsMap &qostagsMap);
+std::ostream &operator << (std::ostream &os, const TasConfig::QueueSchedule &queueSchedule);
 std::ostream &operator << (std::ostream &os, const TasConfig &tasConfig);
 
 /**
  * Serialize from the given istream to this TasConfig.
  */
-std::istream &operator >> (std::istream &is, QostagsMap &qostagsMap);
-std::istream &operator >> (std::istream &is, TasSchedule &tasSchedule);
+std::istream &operator >> (std::istream &is, TasConfig::QostagsMap &qostagsMap);
+std::istream &operator >> (std::istream &is, TasConfig::QueueSchedule &queueSchedule);
 std::istream &operator >> (std::istream &is, TasConfig &tasConfig);
 
 ATTRIBUTE_HELPER_HEADER (TasConfig);

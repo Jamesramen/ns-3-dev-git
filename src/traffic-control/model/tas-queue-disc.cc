@@ -39,7 +39,8 @@ NS_OBJECT_ENSURE_REGISTERED (TasQueueDisc);
 ATTRIBUTE_HELPER_CPP (TasConfig);
 
 std::ostream &
-operator << (std::ostream &os, const QostagsMap &qostagsMap){
+operator << (std::ostream &os, const TasConfig::QostagsMap &qostagsMap)
+{
 
   if( (unsigned int) qostagsMap.size() != TOTAL_QOS_TAGS ){
     NS_FATAL_ERROR ("Incomplete schedule QostagsMap specification (" << (unsigned int) qostagsMap.size() << " values provided, " << TOTAL_QOS_TAGS << " required)");
@@ -51,29 +52,41 @@ operator << (std::ostream &os, const QostagsMap &qostagsMap){
 
   return os;
 }
+
 std::ostream &
-operator << (std::ostream &os, const TasSchedule &tasSchedule){
-  os << tasSchedule.duration;
-  os << tasSchedule.qostagsMap;
-  os << tasSchedule.startOffset;
-  os << tasSchedule.stopOffset;
+operator << (std::ostream &os, const TasConfig::QueueSchedule &queueSchedule)
+{
+  if(queueSchedule.openTimes.size() != queueSchedule.closesTimes.size())
+  {
+    NS_FATAL_ERROR ("Error in lookUpElement");
+  }
+  unsigned int vectorSize = queueSchedule.openTimes.size();
+  os << vectorSize;
+
+  for(unsigned int i= 0; i < vectorSize; i++)
+  {
+    os << *(queueSchedule.openTimes.begin()+i) << *(queueSchedule.closesTimes.begin()+i);
+  }
+
   return os;
 }
+
 std::ostream &
 operator << (std::ostream &os, const TasConfig &tasConfig)
 {
+  os << tasConfig.cycleLength;
 
-  if(!tasConfig.list.empty()){
-    for(unsigned int i = 0; i < (unsigned int)tasConfig.list.size() -1; i++ ){
-      os << tasConfig.list.at(i);
-    }
+  for(unsigned int q = 0; q < TOTAL_QOS_TAGS; q++)
+  {
+    os << tasConfig.queueSchedulePlan[q];
   }
-  os << 0; // End character
+
   return os;
 }
 
 std::istream &
-operator >> (std::istream &is, QostagsMap &qostagsMap){
+operator >> (std::istream &is, TasConfig::QostagsMap &qostagsMap)
+{
   for (int i = 0; i < TOTAL_QOS_TAGS; i++)
    {
      if (!(is >> qostagsMap[i]))
@@ -83,29 +96,34 @@ operator >> (std::istream &is, QostagsMap &qostagsMap){
    }
   return is;
 }
+
 std::istream &
-operator >> (std::istream &is, TasSchedule &tasSchedule){
-  is >> tasSchedule.duration;
-  is >> tasSchedule.qostagsMap;
-  is >> tasSchedule.startOffset;
-  is >> tasSchedule.stopOffset;
+operator >> (std::istream &is, TasConfig::QueueSchedule &queueSchedule)
+{
+  unsigned int vectorSize =0;
+  is >> vectorSize;
+
+  for(unsigned int i = 0; i < vectorSize; i++)
+  {
+    Time openTime,closeTime;
+    is >> openTime;
+    is >> closeTime;
+    queueSchedule.add(openTime,closeTime);
+  }
   return is;
 }
+
 std::istream &
-operator >> (std::istream &is, TasConfig &tasConfig){
+operator >> (std::istream &is, TasConfig &tasConfig)
+{
 
-  unsigned int i = 0;
-  tasConfig.list.clear();
+  Time cycleLength;
+  is >> cycleLength;
 
-  while(is.peek()){
-    if(!(is >> tasConfig.list.at(i))){
-      NS_FATAL_ERROR ("Unspecified fatal error tasConfig input stream");
-    }
-  }
-
-  if(i == 0){
-    NS_FATAL_ERROR ("Incomplete tasConfig specification (" << i << "values provided, 1 required");
-  }
+  for(unsigned int q = 0; q < TOTAL_QOS_TAGS; q++)
+   {
+     is >> tasConfig.queueSchedulePlan[q];
+   }
 
   return is;
 }
@@ -166,9 +184,9 @@ TasQueueDisc::DoPeek (void)
 {
   NS_LOG_FUNCTION (this);
 
-  std::pair <uint32_t, Time> nextQueue = this->GetDequeueQueue();
+  std::pair <int32_t, Time> nextQueue = this->GetDequeueQueue();
 
-  if(nextQueue.second.IsPositive()){
+  if(nextQueue.first > -1){
     return this->GetInternalQueue(nextQueue.first)->Peek();
   }
   else
@@ -234,13 +252,16 @@ TasQueueDisc::DoDequeue (void)
 
   std::pair<int32_t, Time> nextQueue = this->GetDequeueQueue();
 
-  if(nextQueue.second.IsZero())
+  if(nextQueue.first > -1)
   {
-    return GetInternalQueue(nextQueue.first)->Dequeue(); ;
-  }
-  else if(nextQueue.first > -1)
-  {
-    ScheduleRun(nextQueue.first, nextQueue.second);
+    if(nextQueue.second.IsZero())
+     {
+       return GetInternalQueue(nextQueue.first)->Dequeue(); ;
+     }
+    else
+    {
+      ScheduleRun(nextQueue.first, nextQueue.second);
+    }
   }
   return 0;
 }
@@ -249,7 +270,7 @@ std::pair<int32_t, Time>
 TasQueueDisc::GetDequeueQueue()
 {
   //No valid schedule configured
-  if(m_cycleLength.IsZero())
+  if(m_tasConfig.cycleLength.IsZero())
   {
     for(int i = TOTAL_QOS_TAGS-1; i > -1 ; i--)
     {
@@ -258,9 +279,10 @@ TasQueueDisc::GetDequeueQueue()
         return std::make_pair(i,Time(0));
       }
     }
+    return std::make_pair(-1,Time(-1));
   }
 
-  Time tempTimeIndex,foundTimeIndex = m_cycleLength;
+  Time tempTimeIndex,foundTimeIndex = m_tasConfig.cycleLength;
 
   std::vector<Time> fastestOpenTimes;
   int32_t queueToOpen = -1;
@@ -290,12 +312,12 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
     return Time(-1);
   }
 
-  if(m_tasConfig.list.size() == 0)
-   {
-     return Time(0); // No schudles configured
-   }
-
-   if(m_queueLookUp[qostag].openTimes.size() == 0 || m_queueLookUp[qostag].closesTimes.size() == 0)
+  if(m_tasConfig.cycleLength == Time(0))
+  {
+    //No schedules configuerd
+    return Time(0);
+  }
+   if(m_tasConfig.queueSchedulePlan[qostag].openTimes.size() == 0 || m_tasConfig.queueSchedulePlan[qostag].closesTimes.size() == 0)
    {
      return Time(-1); //Queue will never Open
    }
@@ -305,13 +327,13 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
   //Calculate Transmison time result is in Picoseconds
   double bitRate(1.0/m_linkBandwidth.GetBitRate());
   int paketBitSize = 8*GetInternalQueue(qostag)->Peek()->GetSize();
-  double result = bitRate*paketBitSize*1000*1000*1000;
+  double result = bitRate*paketBitSize*1000*1000*1000*1000;
 
   Time transmitionTime = PicoSeconds(result);
-  Time relativeNow( simulationTime.GetInteger() % m_cycleLength.GetInteger()); // Relative Time in schedule
+  Time relativeNow( simulationTime.GetInteger() % m_tasConfig.cycleLength.GetInteger()); // Relative Time in schedule
 
   relativeNow += transmitionTime; // to compensate the transmission time
-  int32_t vectorPosition = GetNextBiggerEntry(m_queueLookUp[qostag].closesTimes, relativeNow);
+  int32_t vectorPosition = GetNextBiggerEntry(m_tasConfig.queueSchedulePlan[qostag].closesTimes, relativeNow);
   relativeNow -= transmitionTime;
 
   if(vectorPosition < 0)
@@ -319,22 +341,20 @@ TasQueueDisc::TimeUntileQueueOpens(int qostag)
     return Time(-1);
   }
 
-  m_queueLookUp[qostag].myLastIndex = vectorPosition;
-
-  if(m_queueLookUp[qostag].openTimes[vectorPosition] <= relativeNow)
+  if(m_tasConfig.queueSchedulePlan[qostag].openTimes[vectorPosition] <= relativeNow)
   {
-    if(!(vectorPosition == 0 && m_queueLookUp[qostag].closesTimes[vectorPosition] < relativeNow + transmitionTime))
+    if(!(vectorPosition == 0 && m_tasConfig.queueSchedulePlan[qostag].closesTimes[vectorPosition] < relativeNow + transmitionTime))
     {
       return Time(0);
     }
-    return m_queueLookUp[qostag].openTimes[vectorPosition] - relativeNow + m_cycleLength;
+    return m_tasConfig.queueSchedulePlan[qostag].openTimes[vectorPosition] - relativeNow + m_tasConfig.cycleLength;
   }
-
-  return m_queueLookUp[qostag].openTimes[vectorPosition] - relativeNow;
+  return m_tasConfig.queueSchedulePlan[qostag].openTimes[vectorPosition] - relativeNow;
 }
 
 int32_t
-TasQueueDisc::GetNextBiggerEntry(std::vector<Time> vector, Time data){
+TasQueueDisc::GetNextBiggerEntry(std::vector<Time> vector, Time data)
+{
 
   if(vector.size() == 0)
   {
@@ -355,7 +375,8 @@ TasQueueDisc::GetNextBiggerEntry(std::vector<Time> vector, Time data){
 }
 
 Time
-TasQueueDisc::GetDeviceTime(){
+TasQueueDisc::GetDeviceTime()
+{
 
   if(!m_getNow.IsNull()){
     return m_getNow();
@@ -404,25 +425,6 @@ TasQueueDisc::CheckConfig (void)
 void
 TasQueueDisc::InitializeParams (void)
 {
-  //Creating look up table
-  std::vector<TasSchedule>::iterator itr;
-
-  Time currentOffset = Time(0);
-  for(itr = m_tasConfig.list.begin(); itr < m_tasConfig.list.end(); itr++)
-  {
-    Time timeWindowOpensAt =  currentOffset + itr->startOffset;
-    Time timeWindowClosesAt =  currentOffset + itr->duration - itr->stopOffset;
-    currentOffset += itr->duration;
-
-    for(unsigned int queueIndex = 0; queueIndex < TOTAL_QOS_TAGS; queueIndex++)
-    {
-      if(itr->qostagsMap[queueIndex])
-      {
-        m_queueLookUp[queueIndex].add(timeWindowOpensAt,timeWindowClosesAt,itr - m_tasConfig.list.begin());
-      }
-    }
-  }
-  m_cycleLength = currentOffset;
   NS_LOG_FUNCTION (this);
 }
 

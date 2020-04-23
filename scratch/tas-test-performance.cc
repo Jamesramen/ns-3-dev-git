@@ -31,7 +31,7 @@
 #include <chrono>
 
 #define NUMBER_OF_NODE_PAIRS 100
-#define NUMBER_OF_SCHEDULE_ENTRYS 20
+#define NUMBER_OF_SCHEDULE_ENTRYS 100
 
 using namespace ns3;
 
@@ -48,14 +48,11 @@ main (int argc, char *argv[])
   CommandLine cmd;
   cmd.Parse (argc, argv);
 
-  Time::SetResolution (Time::MS);
+  Time::SetResolution (Time::NS);
   Time sendPeriod,scheduleDuration,simulationDuration;
   scheduleDuration = Seconds(2);
   simulationDuration = 2*scheduleDuration*NUMBER_OF_SCHEDULE_ENTRYS;
   sendPeriod = scheduleDuration/2;
-
-//  LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
-//  LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
 
   CallbackValue timeSource = MakeCallback(&callbackfunc);
   NodeContainer nodes;
